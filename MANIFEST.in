@@ -1,0 +1,8 @@
+include README.rst
+include LICENSE
+include rtcr/config.ini
+include rtcr/immune_receptor_reference.tsv.gz
+
+recursive-include src *.c
+recursive-include include *.h
+recursive-include tests *.py

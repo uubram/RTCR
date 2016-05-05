@@ -1,0 +1,8 @@
+# python development
+build/
+dist/
+*.egg-info/
+
+# python testing
+.cache/
+__pycache__/
