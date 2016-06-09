@@ -10,15 +10,13 @@ Installation
 RTCR requires an external aligner, we have chosen for Bowtie 2, but if you
 would like to use your own, read the section "switching aligners".
 
-1) Install Bowtie 2
+1) Install `Bowtie 2 <http://bowtie-bio.sourceforge.net/bowtie2/index.shtml>`_
 
-Please go to http://bowtie-bio.sourceforge.net/bowtie2/index.shtml and follow
-the instructions on how to download and install Bowtie 2.
+2) Install the RTCR_ package
 
-2) Install the RTCR package (http://uubram.github.io/RTCR/)
-
-Download the zip file and extract it. Open a terminal and go to the newly
-extracted RTCR folder and run::
+Download the zip file and extract it. Bowtie 2 is not included in this file
+and needs to be downloaded and installed separately (see step 1). Open a
+terminal and go to the newly extracted RTCR folder and run::
         
         python setup.py install
 
@@ -90,8 +88,7 @@ same directory.
 .. NOTE::
 
         If you have a paired-end HTS dataset, please merge the read-pairs first
-        using a program such as pear
-        (http://sco.h-its.org/exelixis/web/software/pear/).
+        using a program such as pear_.
 
 To use a different germline reference, for example to analyse a mouse TcR-alpha
 repertoire HTS dataset (e.g. "mouse.fastq"), use the "--species" and "--gene"
@@ -238,3 +235,20 @@ and "args_align_j" keys respectively. Any arguments that are the same for both
 can be put in "args_align_base". The "%phred_encoding)s" and "%(n_threads)s"
 parts of the arguments will contain the phred encoding (33 or 64) and number
 of threads respectively. It is optional to use these in the arguments.
+
+Analyzing RTCR output with tcR R package
+========================================
+
+Data analysis of immune receptor repertoires can be performed using tcR_, a
+package for the R_ software environment. RTCR provides an R script,
+named 'tcR_RTCR_parser.R', for loading RTCR output into the tcR package for
+analysis. See below for an example of how to load RTCR output from inside R::
+
+        source("tcR_RTCR_parser.R")
+        rtcr_data <- parse.rtcr("results.tsv")
+
+.. _bowtie2: http://bowtie-bio.sourceforge.net/bowtie2/index.shtml
+.. _RTCR: http://uubram.github.io/RTCR/
+.. _pear: http://sco.h-its.org/exelixis/web/software/pear/
+.. _tcR: https://cran.r-project.org/web/packages/tcR/index.html
+.. _R: https://www.r-project.org/

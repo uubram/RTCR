@@ -34,11 +34,12 @@ def run_nmerge_on_bin(cloneset):
                 continue
             if 'N' in nb.seq:
                 continue
-            
+           
             mc_diff, merged_clone = scls.premerge(clone, nb)
             if not merged_clone is None:
                 scls.enact_merge(clone, nb, merged_clone)
                 logger.debug("merged %s to %s"%(clone, nb))
+                break
     logger.info("NMerge end (seqlen: %s)"%seqlen)
     return scls
 
