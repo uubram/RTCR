@@ -4,6 +4,7 @@
 
 import logging
 logger = logging.getLogger(__name__)
+from itertools import chain, groupby
 
 from clone import SearchableCloneSet
 
@@ -42,6 +43,38 @@ def run_nmerge_on_bin(cloneset):
                 break
     logger.info("NMerge end (seqlen: %s)"%seqlen)
     return scls
+
+def main():
+    import argparse
+    import cPickle as pickle
+    from fileio import LegacyCloneSetFormat
+    from clone import CloneSet
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-i", required = True,
+            help = "Python object file with a CloneSet object")
+    parser.add_argument("-o", required = True, help = "output tsv file.")
+    args = parser.parse_args()
+
+    input_fn = args.i
+    output_fn = args.o
+
+    logging.basicConfig(level = logging.DEBUG)
+   
+    print "Getting cloneset"
+    with open(input_fn, 'r') as infile:
+        cloneset = pickle.load(infile)
+
+    by_seqlen = lambda clone:len(clone.seq)
+    results = []
+    for seqlen, clones in groupby(sorted(cloneset, key = by_seqlen),
+            by_seqlen):
+        results.append(run_nmerge_on_bin(CloneSet(clones)))
+    
+    cloneset = CloneSet(chain.from_iterable(results))
+
+    print "Writing cloneset"
+    LegacyCloneSetFormat.records_out(open(output_fn, 'w'), cloneset)
+    print "\nClones left: %s"%len(cloneset)
 
 if __name__ == "__main__":
     main()

@@ -246,7 +246,8 @@ class AnnotatedCloneDistinctAllele(AnnotatedClone):
         did = None if self.d.allele is None else self.d.allele.name
         jid = self.j.allele.name
         cid = None if self.c.allele is None else self.c.allele.name
-        return "%s(%s,%s,%s,%s)"%(self.__classname__, vid, did, jid, cid)
+        return "%s(%s,%s,%s,%s,%s)"%(self.__class__.__name__, vid, did, jid,
+                cid, self.seq)
 
     def __eq__(self, other):
         if isinstance(other, self.__class__):

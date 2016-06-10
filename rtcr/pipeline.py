@@ -163,6 +163,16 @@ def wrapper_run_nmerge_on_bin(*args):
     return run_nmerge_on_bin(args[0])
 
 class Pipeline(threading.Thread):
+    def _save_cloneset(self, cloneset, name):
+        self._listener.notify("Saving cloneset (\"%s\") to file"%name)
+
+        #LegacyCloneSetFormat.records_out(zopen(name + ".tsv", 'w'),
+        #        cloneset)
+
+        import cPickle as pickle
+        with open(name + ".dat",'w') as f:
+            pickle.dump(cloneset, f, protocol = -1)
+
     def __init__(self, ref, reads, phred_encoding,
             cmd_build_index,
             args_build_index,
@@ -173,7 +183,6 @@ class Pipeline(threading.Thread):
             alignment_stats_fn,
             Q_mm_stats_fn,
             Q_mm_stats_plot_fn,
-            raw_clones_fn,
             output_fn,
             clone_classname,
             confidence,
@@ -217,7 +226,6 @@ class Pipeline(threading.Thread):
         statistics.
         :Q_mm_stats_plot_fn: name of file to output plot of observed quality vs
         base quality scores.
-        :raw_clones_fn: name of file to output raw clones to.
         :output_fn: name of file to output final clones to.
         :clone_classname: string, classname of type of clone to build
         :confidence: right confidence limit (between 0 and 1), this is used to
@@ -248,7 +256,6 @@ class Pipeline(threading.Thread):
         self._alignment_stats_fn = alignment_stats_fn
         self._Q_mm_stats_fn = Q_mm_stats_fn
         self._Q_mm_stats_plot_fn = Q_mm_stats_plot_fn
-        self._raw_clones_fn = raw_clones_fn
         self._output_fn = output_fn
         self._clone_classname = clone_classname
         self._confidence = confidence
@@ -405,10 +412,7 @@ Was the correct germline reference used?"
                             lenfam_alnstats["ins"],
                             lenfam_alnstats["dels"]])) + "\n")
 
-        if not self._raw_clones_fn is None and self._raw_clones_fn != "":
-            logger.info("Writing raw clones to \"%s\""%self._raw_clones_fn)
-            LegacyCloneSetFormat.records_out(zopen(self._raw_clones_fn, 'w'),
-                    cs)
+        self._save_cloneset(cs, "r")
 
         # Sum all the counts in the V and J regions separately, and calculate
         # average error rates
@@ -556,18 +560,12 @@ mm_o (%s, %s), mm_j (%s, %s), mm_tot (%s, %s)"%(seqlen,
             consumer_handler.join()
         results = pool.get_results()
         cloneset = CloneSet(chain.from_iterable([x[0] for x in results]))
-
-        self._listener.notify("Saving cloneset to file")
-        LegacyCloneSetFormat.records_out(open("rqi.tsv", 'w'), cloneset)
-
-        import cPickle as pickle
-        with open("rqi.pyobj",'w') as f:
-            pickle.dump(cloneset, f)
+        self._save_cloneset(cloneset, "rqi")
 
         self._listener.notify("Running LMerge")
         cloneset = run_lmerge(cloneset, global_mmr, global_insr, global_delsr,
                 confidence)
-        LegacyCloneSetFormat.records_out(open("rqil.tsv", 'w'), cloneset)
+        self._save_cloneset(cloneset, "rqil")
 
         pool = ConnectedConsumerPool(n_consumers = self._n_threads)
         for seqlen, clones in groupby(sorted(cloneset, key = by_seqlen),
@@ -602,6 +600,7 @@ mm_o (%s, %s), mm_j (%s, %s), mm_tot (%s, %s)"%(seqlen,
             consumer_handler.join()
         results = pool.get_results()
         cloneset = CloneSet(chain.from_iterable(results))
+        self._save_cloneset(cloneset, "rqiln")
 
         ########################
         # Write clones to file #

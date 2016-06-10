@@ -128,14 +128,17 @@ below:
         Graphical representation of Q_mm_stats.csv. This file is not created
         if matplotlib is not installed.
 
-- r.tsv
+- r.dat
         Raw clones identified by RTCR before error correction.
 
-- rqi.tsv
+- rqi.dat
         Clones after QMerge and IMerge algorithms have run.
 
-- rqil.tsv
+- rqil.dat
         Clones after QMerge, IMerge, and LMerge algorithms have run.
+
+- rqiln.dat
+        Clones after QMerge, IMerge, LMerge, and NMerge algorithms have run.
 
 - results.tsv
         Final list of clones after error correction and post-processing.

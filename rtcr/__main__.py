@@ -1,4 +1,4 @@
-__version__ = "0.3.1.a"
+__version__ = "0.3.1.b"
 
 import logging
 import logging.config
@@ -143,7 +143,6 @@ def prog_pipeline(args):
     alignment_stats_fn = config.get("Defaults", "alignment_stats_fn")
     Q_mm_stats_fn = config.get("Defaults", "Q_mm_stats_fn")
     Q_mm_stats_plot_fn = config.get("Defaults", "Q_mm_stats_plot_fn")
-    raw_clones_fn = config.get("Defaults", "raw_clones_fn")
     qplot_fn = config.get("Defaults", "qplot_fn")
     output_fn = config.get("Defaults", "output_fn")
 
@@ -256,7 +255,6 @@ confidence: %(confidence)s\n\
             alignment_stats_fn = alignment_stats_fn,
             Q_mm_stats_fn = Q_mm_stats_fn,
             Q_mm_stats_plot_fn = Q_mm_stats_plot_fn,
-            raw_clones_fn = raw_clones_fn,
             output_fn = output_fn,
             clone_classname = clone_classname,
             confidence = confidence,
