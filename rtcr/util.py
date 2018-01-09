@@ -2,16 +2,118 @@
 # pipeline.
 import logging
 logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
 
 from itertools import izip, count
 from math import sqrt, log, factorial, pow
 import re
-from time import time
+from time import time, sleep
 from sys import stdout
+import sys
 from tempfile import mkdtemp
+import threading
 import multiprocessing as mp
 import shutil
 import warnings
+import signal
+
+codon2aa = {
+    "TTT" : "F",
+    "TTC" : "F",
+    "TTA" : "L",
+    "TTG" : "L",
+    "CTT" : "L",
+    "CTC" : "L",
+    "CTA" : "L",
+    "CTG" : "L",
+    "ATT" : "I",
+    "ATC" : "I",
+    "ATA" : "I",
+    "ATG" : "M",
+    "GTT" : "V",
+    "GTC" : "V",
+    "GTA" : "V",
+    "GTG" : "V",
+    "TCT" : "S",
+    "TCC" : "S",
+    "TCA" : "S",
+    "TCG" : "S",
+    "CCT" : "P",
+    "CCC" : "P",
+    "CCA" : "P",
+    "CCG" : "P",
+    "ACT" : "T",
+    "ACC" : "T",
+    "ACA" : "T",
+    "ACG" : "T",
+    "GCT" : "A",
+    "GCC" : "A",
+    "GCA" : "A",
+    "GCG" : "A",
+    "TAT" : "Y",
+    "TAC" : "Y",
+    "TAA" : "*",
+    "TAG" : "*",
+    "CAT" : "H",
+    "CAC" : "H",
+    "CAA" : "Q",
+    "CAG" : "Q",
+    "AAT" : "N",
+    "AAC" : "N",
+    "AAA" : "K",
+    "AAG" : "K",
+    "GAT" : "D",
+    "GAC" : "D",
+    "GAA" : "E",
+    "GAG" : "E",
+    "TGT" : "C",
+    "TGC" : "C",
+    "TGA" : "*",
+    "TGG" : "W",
+    "CGT" : "R",
+    "CGC" : "R",
+    "CGA" : "R",
+    "CGG" : "R",
+    "AGT" : "S",
+    "AGC" : "S",
+    "AGA" : "R",
+    "AGG" : "R",
+    "GGT" : "G",
+    "GGC" : "G",
+    "GGA" : "G",
+    "GGG" : "G"}
+
+def nt2aa(nt_seq):
+    n = int(len(nt_seq) / 3)
+    return ''.join([codon2aa.get(nt_seq[3*i:3*i + 3],"?") \
+            for i in xrange(n)])
+
+def clone2str(clone, fmt):
+    """Turn a clone into a string using provided format.
+
+    :fmt: format string
+    """
+    nt_seq = clone.seq
+    aa_seq = nt2aa(nt_seq)
+    count = clone.count
+    n_stop_codons = sum([aa == '*' for aa in aa_seq])
+    min_phred = min(clone.qual)
+    frame = len(clone.seq) % 3
+    qualstr = '|'.join(map(str, clone.qual))
+
+    if hasattr(clone, "v"):
+        vid = clone.v.allele.name
+        jid = clone.j.allele.name
+        ve = clone.v.end
+        js = clone.j.start
+    else:
+        vid = None
+        jid = None
+        ve = 0
+        js = 0
+
+    js1 = js + 1 # 1-based start nucleotide of J gene
+    return fmt%locals()
 
 try:
     from scipy import stats
@@ -130,7 +232,10 @@ class ConnectedProcess(mp.Process):
 
     def run(self):
         self._is_parent = False
+        # Let parent process handle interrupt signal
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
         super(ConnectedProcess, self).run()
+        self.__cleanup()
 
     def send(self, msg, block = True):
         if self._is_parent:
@@ -150,6 +255,11 @@ class ConnectedProcess(mp.Process):
     def recv_nowait(self):
         return self.recv(block = False)
 
+    def __cleanup(self):
+        logger.debug('Closing message queues')
+        self._parent_msgs.close()
+        self._child_msgs.close()
+
 class Task(object):
     def __init__(self, func, args):
         self.func = func
@@ -162,33 +272,56 @@ class ConnectedConsumer(ConnectedProcess):
     def __init__(self, task_queue, result_queue, initializer = None, \
             initargs = ()):
         super(ConnectedConsumer, self).__init__()
-        self.task_queue = task_queue
-        self.result_queue = result_queue
+        self._task_queue = task_queue
+        self._result_queue = result_queue
         self._initializer = initializer
         self._initargs = initargs
 
     def run(self):
         super(ConnectedConsumer, self).run()
-
         if not self._initializer is None:
             self._initializer(*self._initargs)
 
-        while True:
-            next_task = self.task_queue.get()
-            if next_task is None: # sentinel received, shut down
-                self.task_queue.task_done()
-                break
-            result = next_task()
-            self.task_queue.task_done()
-            self.result_queue.put(result)
+        try:
+            while True:
+                    next_task = self._task_queue.get()
+                    if next_task is None: # sentinel received, shut down
+                        logger.debug('Received sentinel')
+                        break
+                    result = next_task()
+                    self._result_queue.put(result)
+        except:
+            logger.error('Exception in consumer',
+                    exc_info = sys.exc_info())
+            raise
+        finally:
+            self.__cleanup()
+
+    def __cleanup(self):
+        logger.debug('Closing task and result queues')
+        self._task_queue.close()
+        self._result_queue.close()
 
 class ConnectedConsumerPool(object):
     def __init__(self, n_consumers, initializer = None, initargs = ()):
-        self._tasks = mp.JoinableQueue()
-        self._ntasks = 0
+        # NOTE: making the _tasks a JoinableQueue and then joining it resulted
+        # in the main process to hang if it tries to exit while a pool is
+        # still running (despite using daemon threads).
+        self._tasks = mp.Queue()
         self._results = mp.Queue()
-        self._state = "OPEN"
+        self._ntasks = 0
+
+        # Without cancel_join_thread the pool can cause the main process to
+        # hang if the pool is stopped before it finished sending tasks.
+        self._tasks.cancel_join_thread()
+
+        self._accept_tasks = True
+        self._started = False
         self._done = False
+        self._run = threading.Event()
+        self._error = threading.Event()
+
+        self._consumer_handler_interval = 1
 
         self._consumers = [ ConnectedConsumer(self._tasks, self._results,
             initializer = initializer, initargs = initargs) \
@@ -196,16 +329,72 @@ class ConnectedConsumerPool(object):
         for consumer in self._consumers:
             consumer.daemon = True
 
+    def _can_continue(self):
+        return self._run.is_set() and not self._error.is_set()
+
+    def _handle_consumers(self):
+        while self._can_continue():
+            logger.debug('Checking consumers')
+            for consumer in self._consumers:
+                # NOTE: it is important to check if the exitcode is not None
+                # BEFORE checking its numerical value. In the reverse order a
+                # proper consumer exit can be seen as a bad one, because just
+                # before the exit the exitcode is None (and exitcode != 0
+                # evaluates to True), and if the consumer then exits properly,
+                # the exitcode evaluates to 0 (and exitcode is not None).
+                if consumer.exitcode is not None and consumer.exitcode != 0:
+                    logger.error('Consumer %s died with exitcode: %s'%(
+                        consumer, consumer.exitcode))
+                    self._error.set()
+            sleep(self._consumer_handler_interval)
+        logger.debug('exit')
+
+    def _handle_results(self):
+        while self._can_continue() and self._ntasks > 0:
+            logger.debug('getting result (%s tasks remaining)'%self._ntasks)
+            self._collected_results += [self._results.get()]
+            self._ntasks -= 1
+        logger.debug('exit')
+
+    def _clean_consumers(self):
+        logger.debug('Cleaning up consumers')
+        for consumer in self._consumers:
+            if consumer.exitcode is not None:
+                logger.debug('Cleaning consumer %s'%consumer)
+                consumer.join()
+
+    def _terminate_consumers(self):
+        logger.debug('Terminating consumers')
+        for consumer in self._consumers:
+            if consumer.exitcode is None:
+                logger.debug('Terminating consumer: %s'%consumer)
+                consumer.terminate()
+
+    def _cleanup(self):
+        logger.debug('Cleaning up pool')
+        self._clean_consumers()
+        self._consumer_handler.join()
+        # NOTE: Not joining self._result_handler because it should already have
+        # been joined before the the clean up. And if not, then joining it now
+        # can cause the main process to hang as it will be waiting for new
+        # results from the already stopped consumers. 
+        self._tasks.close()
+        self._results.close()
+
     def add_task(self, func, args):
-        assert(self._state == "OPEN")
-        assert(type(args) is tuple)
+        if not self._accept_tasks:
+            raise ValueError('Pool does not accept new tasks')
+        if not type(args) is tuple:
+            raise ValueError('args is not a tuple')
         self._tasks.put(Task(func, args))
         self._ntasks += 1
 
     def start(self):
-        assert(self._state == "OPEN")
-        if self._state == "OPEN":
-            self._state = "CLOSE"
+        if self._started:
+            raise ValueError('Pool already started')
+        self._started = True
+        self._accept_tasks = False
+        self._run.set()
 
         # Add a sentinel to tasks for every consumer
         for i in xrange(len(self._consumers)):
@@ -214,33 +403,45 @@ class ConnectedConsumerPool(object):
         for consumer in self._consumers:
             consumer.start()
 
-    def join(self):
-        assert(self._state in ("CLOSE", "TERMINATE"))
-        if self._state == "CLOSE":
-            self._tasks.join()
-        elif self._state == "TERMINATE":
-            for consumer in self._consumers:
-                consumer.join()
+        self._consumer_handler = threading.Thread(
+                target = self._handle_consumers)
+        self._consumer_handler.daemon = True 
+        self._consumer_handler.name = 'Consumer handler'
+        self._consumer_handler.start()
 
-    def all_tasks_done(self):
-        return self._state == "CLOSE" and self._tasks.empty()
+        self._collected_results = []
+
+        self._result_handler = threading.Thread(target = self._handle_results)
+        self._result_handler.daemon = True
+        self._result_handler.name = 'Result handler'
+        self._result_handler.start()
+
+    def join(self):
+        logger.debug('Joining result handler')
+        self._result_handler.join()
+
+        # All results are in, stop and clean up the pool
+        self._run.clear()
+        self._cleanup()
+        if self._ntasks == 0 and not self._error.is_set():
+            self._done = True
 
     def terminate(self):
-        assert(self._state == "CLOSE")
-        self._state = "TERMINATE"
-        for consumer in self._consumers:
-            if consumer.exitcode is None:
-                consumer.terminate()
-                consumer.join()
+        if not self._run.is_set():
+            raise ValueError('Pool is not running')
 
-    def get_consumers(self):
-        assert(self._state == "CLOSE")
-        return self._consumers
+        logger.debug('Terminating pool')
+        self._run.clear()
+        self._terminate_consumers()
+        self._cleanup()
 
-    def get_results(self):
-        assert(self._state == "CLOSE")
-        res = []
-        while self._ntasks > 0:
-            res += [self._results.get()]
-            self._ntasks -= 1
-        return res
+    @property
+    def results(self):
+        if not self._done:
+            raise ValueError('Pool not done yet, results may be incomplete')
+
+        return self._collected_results
+
+    @property
+    def task_count(self):
+        return self._ntasks

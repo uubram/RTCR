@@ -1,4 +1,4 @@
-__version__ = "0.3.1.b"
+__version__ = "0.4.0"
 
 import logging
 import logging.config
@@ -12,10 +12,15 @@ from collections import OrderedDict
 
 import terminal as term
 import config
+import convert
 
 # NOTE: logger should not be used until after logging has been initialised.
 logger = logging.getLogger(__name__)
 here = path.abspath(path.dirname(__file__))
+
+def handle_uncaught_exception(exc_type, exc_value, exc_traceback):
+    logger.critical('Uncaught exception', exc_info = (exc_type, exc_value,
+        exc_traceback))
 
 def init_logging():
     logging.config.fileConfig(config.config_fn,
@@ -116,6 +121,12 @@ def parse_cmdline():
             parser_umi_group_ec)
     parser_umi_group_ec.set_defaults(func = umi_group_ec.prog_umi_group_ec)
 
+    # Add convert program
+    parser_Convert = subparsers.add_parser('Convert',
+            help = 'Convert cloneset (.dat) files to human readable format')
+    parser_Convert = convert.add_parser_arguments(parser_Convert)
+    parser_Convert.set_defaults(func = convert.prog_Convert)
+
     # Add pipeline program
     parser_Pipeline = pipeline_add_parser_arguments(subparsers.add_parser(
         "run", help = "main rtcr pipeline"))
@@ -144,7 +155,9 @@ def prog_pipeline(args):
     Q_mm_stats_fn = config.get("Defaults", "Q_mm_stats_fn")
     Q_mm_stats_plot_fn = config.get("Defaults", "Q_mm_stats_plot_fn")
     qplot_fn = config.get("Defaults", "qplot_fn")
-    output_fn = config.get("Defaults", "output_fn")
+    output_fn = config.get('Defaults', 'output_fn')
+    output_hdr = config.get('Defaults', 'output_hdr').decode('string_escape')
+    output_fmt = config.get('Defaults', 'output_fmt').decode('string_escape')
 
     # [Aligner] section
     location = config.get("Aligner", "location")
@@ -212,8 +225,10 @@ cmd_align)
             sys.exit(1)
 
     version = __version__
-    preamble = "\n\
-RTCR version: %(version)s\n\
+    preamble = '\nRTCR version: %(version)s\n'%locals()
+    preamble += '\n[Command line arguments]\n' + \
+            '\n'.join(['%s : %s'%(i,v) for i,v in enumerate(sys.argv)])
+    preamble += '\n\
 [Files]\n\
 Reference: %(ref_fn)s\n\
 Reads: %(reads_fn)s\n\
@@ -225,7 +240,7 @@ Species: %(species)s\n\
 Gene: %(gene)s\n\
 confidence: %(confidence)s\n\
 \n\
-[Immune receptor reference]\n"%locals()
+[Immune receptor reference]\n'%locals()
     for species in sorted(ref.species):
         for gene in sorted(ref.genes):
             for region in sorted(ref.regions):
@@ -242,6 +257,9 @@ confidence: %(confidence)s\n\
     preamble += "\n[Pipeline run]"
     logger.info(preamble)
 
+    # Make sure exceptions are logged, even when not caught
+    sys.excepthook = handle_uncaught_exception
+
     pipeline = Pipeline(
             ref = ref,
             reads = zopen(reads_fn, 'r'),
@@ -256,6 +274,8 @@ confidence: %(confidence)s\n\
             Q_mm_stats_fn = Q_mm_stats_fn,
             Q_mm_stats_plot_fn = Q_mm_stats_plot_fn,
             output_fn = output_fn,
+            output_hdr = output_hdr,
+            output_fmt = output_fmt,
             clone_classname = clone_classname,
             confidence = confidence,
             min_seqlen = min_seqlen,
@@ -264,13 +284,16 @@ confidence: %(confidence)s\n\
             n_threads = n_threads,
             update_interval = update_interval,
             listener = Listener())
+    pipeline.daemon = True
+    pipeline.name = 'Pipeline'
     try:
         pipeline.start()
         while pipeline.is_alive():
             pipeline.join(1)
     except KeyboardInterrupt:
-        print "Caught keyboard interrupt. Shutting down."
+        logger.error('Caught keyboard interrupt. Shutting down.')
         pipeline.stop()
+        pipeline.join(1)
 
 def main():
     parse_cmdline()

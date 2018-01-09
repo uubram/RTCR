@@ -1,5 +1,6 @@
 include README.rst
 include LICENSE
+include changelog
 include rtcr/config.ini
 include rtcr/immune_receptor_reference.tsv.gz
 

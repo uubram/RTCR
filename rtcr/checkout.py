@@ -6,29 +6,32 @@ import argparse
 import os.path
 import gzip
 from sys import stdout
+from time import time
+
 from barcode import Adapter, Barcode, revcomp
 from fileio import FastqFormat, BarcodeFormat, zopen, FastqRecord, filesize
 import terminal as term
-from time import time
 
 def add_parser_arguments(parser):
-    parser.add_argument("-i", required = True,
-            help = "fastq file with reads containing UMIs")
-    parser.add_argument("-i2",
-            help = "second fastq file. Only required in case of paired-end \
-sequencing.")
-    parser.add_argument("-b", "--barcodes", required = True,
-            help = "file containing sample barcodes and UMIs")
-    parser.add_argument("-m", "--max_mm", type = int, default = 2,
-            help = "Number of mismatches allowed when determining length of \
-region that is matching between a pair of sequences.")
-    parser.add_argument("-rc", "--reverse_complement", action = "store_true",
-            help = "Also look for (master) barcodes on reverse complement")
+    parser.add_argument('-f', '--forward',
+            help = 'fastq file with forward reads')
+    parser.add_argument('-r', '--reverse',
+            help = 'fastq file with reverse reads')
+    parser.add_argument('-p', '--paired',
+            help = 'fastq file with reads containing merged read pairs')
+    parser.add_argument('-b', '--barcodes', required = True,
+            help = 'file containing sample barcodes and UMIs')
+    parser.add_argument('-m', '--max_mm', type = int, default = 2,
+            help = 'Number of mismatches allowed when determining length of \
+region that is matching between a pair of sequences.')
+    parser.add_argument('-rc', '--reverse_complement', action = 'store_true',
+            help = 'Also look for (master) barcodes on reverse complement')
     return parser
 
 def get_best_match(matches, matches_rc):
     is_rc = False
     best_match = None
+
     if matches and len(matches) > 0:
         best_match = matches[0]
 
@@ -38,19 +41,12 @@ def get_best_match(matches, matches_rc):
             is_rc = True
     return best_match, is_rc
 
-def prog_checkout(args):
-    search_rc = args.reverse_complement
-    barcodes_fn = args.barcodes
+def checkout(fq1_fn, fq2_fn, adapters, max_mm, search_rc, paired = False):
+    assert not fq1_fn is None
+    assert not (paired and not fq2_fn is None)
 
-    adapters = list(BarcodeFormat.records_in(open(barcodes_fn, 'r')))
-    
-    outfiles = {sample_id : open("%s.fastq"%sample_id,'w') \
-            for (sample_id, master, slave) in adapters}
-
-    fq1_fn = args.i
-    fq2_fn = args.i2
-
-    max_mm = args.max_mm
+    print 'Handling file(s): %s'%''.join([fq1_fn,
+        '' if fq2_fn is None else ', %s'%fq2_fn])
 
     fq1_file = zopen(fq1_fn, 'r')
     if isinstance(fq1_file, gzip.GzipFile):
@@ -61,25 +57,37 @@ def prog_checkout(args):
         fq1_filepos = fq1_file.tell
 
     fq1 = FastqFormat.records_in(fq1_file, encoding = None)
-    if fq2_fn:
+    if not fq2_fn is None:
         fq2 = FastqFormat.records_in(zopen(fq2_fn, 'r'), encoding = None)
     else:
-        fq2 = False
+        fq2 = None
+
+    outfiles = {}
+    for (sample_id, master, slave) in adapters:
+            outfiles[sample_id] = {
+                    "out1" : (open("%s_R1.fastq"%sample_id, 'w'), 'R1') \
+                            if not paired else \
+                            (open("%s_R12.fastq"%sample_id, 'w'), 'R12'),
+                    "out2" : (None, None) if fq2 is None else \
+                            (open("%s_R2.fastq"%sample_id, 'w'), 'R2')}
 
     n_accepted = 0
     prev_time = time()
     for i, r1 in enumerate(fq1):
-        if time() - prev_time > .5:
+        frac = float(fq1_filepos()) / fq1_filesize
+        if time() - prev_time > .5 or frac == 1.0:
             prev_time = time()
-            frac = float(fq1_filepos()) / fq1_filesize
             stdout.write(term.EL(2) + term.CHA(0) + \
                     "Processed %s records (%.2f%%), accepted %s (%.2f%%)"%(i,
-                        frac*100, n_accepted, 100*float(n_accepted)/i))
+                        frac*100, n_accepted,
+                        (100*float(n_accepted)/i) if i > 0 else 0))
             stdout.flush()
 
         if fq2:
             r2 = next(fq2)
             assert(r1.id == r2.id)
+        else:
+            r2 = None
 
         # Demultiplex
         best_match = None
@@ -108,7 +116,7 @@ def prog_checkout(args):
                     # apparently strands are swapped
                     r1, r2 = r2, r1
 
-            if master_match == None:
+            if master_match is None:
                 continue
 
             if is_rc:
@@ -137,12 +145,17 @@ def prog_checkout(args):
             
             slave_umi = ("", "")
             if slave: # has slave adapter
-                slave_matches, slave_matches_rc = slave.locate_in(r2.seq,
+                if paired:
+                    r = r1
+                else:
+                    r = r2
+
+                slave_matches, slave_matches_rc = slave.locate_in(r.seq,
                         max_mm, search_rc = False)
                 slave_match = get_best_match(slave_matches, slave_matches_rc)
 
                 if slave.has_UMI(): # get umi
-                    slave_umi = slave.get_UMI(r2.seq, r2.qual_str,
+                    slave_umi = slave.get_UMI(r.seq, r.qual_str,
                             slave_match[1])
                     if slave.UMI_length != len(slave_umi[0]):
                         continue
@@ -153,16 +166,44 @@ def prog_checkout(args):
 
         if best_match:
             master_match, sample_id, umi = best_match
-            out = outfiles[sample_id]
-            out.write("@%s UMI:%s:%s\n"%(r1.id, umi[0], umi[1]))
-            out.write("%s\n+\n%s\n"%(r1.seq, r1.qual_str))
+            for (r, (out, typename)) in ((r1, outfiles[sample_id]["out1"]),
+                    (r2, outfiles[sample_id]["out2"])):
+                if not out:
+                    continue
+                out.write("@%s UMI:%s:%s:%s\n"%(r.id, typename, umi[0],
+                    umi[1]))
+                out.write("%s\n+\n%s\n"%(r.seq, r.qual_str))
             n_accepted += 1
+    stdout.write('\n')
 
+def prog_checkout(args):
+    search_rc = args.reverse_complement
+    barcodes_fn = args.barcodes
+
+    adapters = list(BarcodeFormat.records_in(open(barcodes_fn, 'r')))
+    
+    max_mm = args.max_mm
+
+    if args.forward is None and args.reverse is None and args.paired is None:
+        raise Exception('Require at least 1 fastq input file')
+
+    fq1_fn = args.forward
+    fq2_fn = args.reverse
+    fq12_fn = args.paired
+
+    if not fq1_fn is None:
+        checkout(fq1_fn, fq2_fn, adapters, max_mm, search_rc)
+    elif not fq2_fn is None:
+        checkout(fq2_fn, fq1_fn, adapters, max_mm, search_rc)
+
+    if not fq12_fn is None:
+        checkout(fq12_fn, None, adapters, max_mm, search_rc, paired = True)
+            
 def main():
     parser = argparse.ArgumentParser()
     add_parser_arguments(parser)
     args = parser.parse_args()
     prog_checkout(args)
 
-if __name__=="__main__":
+if __name__=='__main__':
     main()

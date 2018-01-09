@@ -9,87 +9,18 @@ import gzip
 from time import time, sleep
 from collections import namedtuple
 from itertools import izip, groupby, chain
+import cPickle as pickle
+import sys
 
 from align import get_vj_alignments
 from fileio import zopen, SAMFormat, LegacyCloneSetFormat, filesize
 from clone import CloneSet, build_clone
 from seq import get_error_stats
-from util import ConnectedConsumerPool
+from util import ConnectedConsumerPool, clone2str, nt2aa
 from qmerge import run_qmerge_on_bin
 from imerge import run_imerge_on_bin
 from lmerge import run_lmerge
 from nmerge import run_nmerge_on_bin
-
-codon2aa = {
-    "TTT" : "F",
-    "TTC" : "F",
-    "TTA" : "L",
-    "TTG" : "L",
-    "CTT" : "L",
-    "CTC" : "L",
-    "CTA" : "L",
-    "CTG" : "L",
-    "ATT" : "I",
-    "ATC" : "I",
-    "ATA" : "I",
-    "ATG" : "M",
-    "GTT" : "V",
-    "GTC" : "V",
-    "GTA" : "V",
-    "GTG" : "V",
-    "TCT" : "S",
-    "TCC" : "S",
-    "TCA" : "S",
-    "TCG" : "S",
-    "CCT" : "P",
-    "CCC" : "P",
-    "CCA" : "P",
-    "CCG" : "P",
-    "ACT" : "T",
-    "ACC" : "T",
-    "ACA" : "T",
-    "ACG" : "T",
-    "GCT" : "A",
-    "GCC" : "A",
-    "GCA" : "A",
-    "GCG" : "A",
-    "TAT" : "Y",
-    "TAC" : "Y",
-    "TAA" : "*",
-    "TAG" : "*",
-    "CAT" : "H",
-    "CAC" : "H",
-    "CAA" : "Q",
-    "CAG" : "Q",
-    "AAT" : "N",
-    "AAC" : "N",
-    "AAA" : "K",
-    "AAG" : "K",
-    "GAT" : "D",
-    "GAC" : "D",
-    "GAA" : "E",
-    "GAG" : "E",
-    "TGT" : "C",
-    "TGC" : "C",
-    "TGA" : "*",
-    "TGG" : "W",
-    "CGT" : "R",
-    "CGC" : "R",
-    "CGA" : "R",
-    "CGG" : "R",
-    "AGT" : "S",
-    "AGC" : "S",
-    "AGA" : "R",
-    "AGG" : "R",
-    "GGT" : "G",
-    "GGC" : "G",
-    "GGA" : "G",
-    "GGG" : "G"}
-
-def nt2aa(nt_seq):
-    n = int(len(nt_seq) / 3)
-    return ''.join([codon2aa.get(nt_seq[3*i:3*i + 3],"?") \
-            for i in xrange(n)])
 
 def p2q(p):
     return -10*math.log10(p)
@@ -155,10 +86,6 @@ cloneset.mutation_count))
         gc.enable()
     return cloneset, mismatch_rate
 
-def handle_consumers(consumers, exit_event):
-    while not exit_event.is_set():
-        pass
-
 def wrapper_run_nmerge_on_bin(*args):
     return run_nmerge_on_bin(args[0])
 
@@ -169,10 +96,31 @@ class Pipeline(threading.Thread):
         #LegacyCloneSetFormat.records_out(zopen(name + ".tsv", 'w'),
         #        cloneset)
 
-        import cPickle as pickle
         with open(name + ".dat",'w') as f:
             pickle.dump(cloneset, f, protocol = -1)
 
+    def run_pool(self, pool, desc):
+        total_task_count = pool.task_count
+        try:
+            pool.start()
+
+            self._listener.notify(("PROGRESSBAR", desc, "start"))
+            while pool.task_count > 0 and not self.stopped():
+                sleep(self._update_interval)
+                frac = float(total_task_count - pool.task_count) / \
+                        total_task_count
+                self._listener.notify(("PROGRESSBAR", desc, frac))
+
+            if self.stopped():
+                raise Exception('Pipeline stopped')
+
+            pool.join()
+
+            self._listener.notify(("PROGRESSBAR", desc, "end"))
+        except:
+            pool.terminate()
+            raise
+        
     def __init__(self, ref, reads, phred_encoding,
             cmd_build_index,
             args_build_index,
@@ -184,6 +132,8 @@ class Pipeline(threading.Thread):
             Q_mm_stats_fn,
             Q_mm_stats_plot_fn,
             output_fn,
+            output_hdr,
+            output_fmt,
             clone_classname,
             confidence,
             min_seqlen,
@@ -227,6 +177,8 @@ class Pipeline(threading.Thread):
         :Q_mm_stats_plot_fn: name of file to output plot of observed quality vs
         base quality scores.
         :output_fn: name of file to output final clones to.
+        :output_hdr: header string of output file.
+        :output_fmt: detailed output format string of clones.
         :clone_classname: string, classname of type of clone to build
         :confidence: right confidence limit (between 0 and 1), this is used to
         calculate how many bases are allowed to be mutated (both QMerge and
@@ -257,6 +209,8 @@ class Pipeline(threading.Thread):
         self._Q_mm_stats_fn = Q_mm_stats_fn
         self._Q_mm_stats_plot_fn = Q_mm_stats_plot_fn
         self._output_fn = output_fn
+        self._output_hdr = output_hdr
+        self._output_fmt = output_fmt
         self._clone_classname = clone_classname
         self._confidence = confidence
         self._min_seqlen = min_seqlen
@@ -474,7 +428,13 @@ insr: %(global_insr)s, delsr: %(global_delsr)s"%locals())
                     if q_obs > 0:
                         sum_ratios += (q / q_obs) * n
                         n_ratios += n
-        alpha = float(sum_ratios) / n_ratios
+        if n_ratios > 0:
+            alpha = float(sum_ratios) / n_ratios
+        else:
+            logger.warning('No instances found of a Phred score associated ' +\
+                    'with mismatches.')
+            alpha = 1.0
+
         logger.info("Ratio between base quality and observed quality: %s"%
                 alpha)
 
@@ -534,31 +494,8 @@ mm_o (%s, %s), mm_j (%s, %s), mm_tot (%s, %s)"%(seqlen,
             pool.add_task(run_ec_on_bin, (cs2, mmr, confidence, max_Q))
     
         self._listener.notify("Running QMerge and IMerge on bins.")
-        exit_event = threading.Event()
-        try:
-            pool.start()
-            consumer_handler = threading.Thread(
-                    target = handle_consumers,
-                    args = (pool.get_consumers(), exit_event))
-            consumer_handler.daemon = False
-            consumer_handler.start()
-            while not pool.all_tasks_done():
-                if self.stopped():
-                    logger.warning("Pipeline stopped")
-                    exit_event.set()
-                    consumer_handler.join()
-                    pool.terminate()
-                    pool.join()
-                    return
-                sleep(.1)
-        except:
-            pool.terminate()
-            pool.join()
-            raise
-        finally:
-            exit_event.set()
-            consumer_handler.join()
-        results = pool.get_results()
+        self.run_pool(pool, desc = 'QMerge, IMerge')
+        results = pool.results
         cloneset = CloneSet(chain.from_iterable([x[0] for x in results]))
         self._save_cloneset(cloneset, "rqi")
 
@@ -574,31 +511,8 @@ mm_o (%s, %s), mm_j (%s, %s), mm_tot (%s, %s)"%(seqlen,
             pool.add_task(wrapper_run_nmerge_on_bin,
                     args = (cs2,))
         self._listener.notify("Running NMerge on bins.")
-        exit_event = threading.Event()
-        try:
-            pool.start()
-            consumer_handler = threading.Thread(
-                    target = handle_consumers,
-                    args = (pool.get_consumers(), exit_event))
-            consumer_handler.daemon = False
-            consumer_handler.start()
-            while not pool.all_tasks_done():
-                if self.stopped():
-                    logger.warning("Pipeline stopped")
-                    exit_event.set()
-                    consumer_handler.join()
-                    pool.terminate()
-                    pool.join()
-                    return
-                sleep(.1)
-        except:
-            pool.terminate()
-            pool.join()
-            raise
-        finally:
-            exit_event.set()
-            consumer_handler.join()
-        results = pool.get_results()
+        self.run_pool(pool, desc = 'NMerge')
+        results = pool.results
         cloneset = CloneSet(chain.from_iterable(results))
         self._save_cloneset(cloneset, "rqiln")
 
@@ -608,48 +522,24 @@ mm_o (%s, %s), mm_j (%s, %s), mm_tot (%s, %s)"%(seqlen,
         self._listener.notify("Writing clones")
         with open(self._output_fn, 'w') as res_ok:
             with open("discarded_clones.tsv", 'w') as res_not_ok:
-                header = "Number of reads\tAmino acid sequence\tV gene\t\
-J gene\tJunction nucleotide sequence\tV gene end position\t\
-J gene start position\tFrame\tNumber of stop codons\tMinimum Phred\tQuality\n"
-
+                header = self._output_hdr
                 res_ok.write(header)
                 res_not_ok.write(header)
 
                 n_discarded = 0
                 for clone in sorted(cloneset,
                         key = lambda clone:(-clone.count, clone.seq)):
-                    aa_seq = nt2aa(clone.seq)
-                    n_stop_codons = sum([aa == "*" for aa in aa_seq])
                     min_phred = min(clone.qual)
+                    aa_seq = nt2aa(clone.seq)
+                    n_stop_codons = sum([aa == '*' for aa in aa_seq])
                     frame = len(clone.seq) % 3
-                    if min_phred < self._min_phred_threshold or \
-                        n_stop_codons > 0 or frame != 0:
-                            n_discarded += 1
-                            out = res_not_ok
+                    if min_phred < self._min_phred_threshold \
+                            or n_stop_codons > 0 or frame != 0:
+                        n_discarded += 1
+                        out = res_not_ok
                     else:
                         out = res_ok
-
-                    if hasattr(clone, "v"):
-                        vid = clone.v.allele.name
-                        jid = clone.j.allele.name
-                        ve = clone.v.end
-                        js = clone.j.start
-                    else:
-                        vid = None
-                        jid = None
-                        ve = 0
-                        js = 0
-                    out.write("\t".join(map(str, [clone.count,
-                        aa_seq,
-                        vid,
-                        jid,
-                        clone.seq,
-                        ve,
-                        js + 1,
-                        frame,
-                        n_stop_codons,
-                        min_phred,
-                        "|".join(map(str, clone.qual))])) + "\n")
+                    out.write(clone2str(clone, fmt = self._output_fmt))
         self._listener.notify("Discarded %s clones"%n_discarded)
 
     def stopped(self):

@@ -2,6 +2,7 @@
 
 import logging
 logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
 
 from itertools import groupby
 from math import ceil, log10, isnan

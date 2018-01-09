@@ -49,6 +49,10 @@ class Node(object):
     def isset(self):
         return self._isset
 
+    def clear(self):
+        self._value = None
+        self._isset = False
+
     def __repr__(self):
         return "%s(parent: %s, char: \"%s\", children: %s, value: %r)"%(
                 self.__class__,
@@ -177,13 +181,12 @@ class Trie(object):
         """
         node = self.get_node(key)
 
-        if node == None or not node.isset:
+        if node is None or not node.isset:
             raise ValueError("String (\"%s\") does not exist."%s)
 
-        node.value = None
-        node.isset = False
+        node.clear()
 
-        while node.is_leaf() and not node.isset and node.parent != None:
+        while node.is_leaf() and not node.isset and not node.parent is None:
             node.parent.remove_child(node.char)
             node = node.parent
         self._length -= 1

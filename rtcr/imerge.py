@@ -4,6 +4,7 @@
 
 import logging
 logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
 
 from math import isnan, sqrt
 from collections import defaultdict
@@ -56,6 +57,7 @@ class MergeInfo():
             if extend_hd > self.maxhd:
                 self.maxhd = extend_hd 
             self._neighborhood = set(scls.neighbors(self.clone, self.maxhd))
+        #self._neighborhood = set(scls.neighbors(self.clone, self.maxhd))
         return self._neighborhood
 
 def run_imerge(cloneset, mismatch_rate, confidence):

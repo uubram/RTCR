@@ -1,0 +1,59 @@
+# Change Log
+
+## [0.4.0]
+### Added
+- filter to umi_group_ec. Reads that are too dissimilar to an existing
+consensus sequence with the same UMI, are discarded if their score (from
+get_offset method) is less than "min_score4merge".
+- progress indicator for umi_group_ec.
+- progress indicator for QMerge&IMerge, and NMerge
+- "output_hdr" and "output_fmt" options to config.ini for customization of the
+way clones are output to text (currently ".tsv") files.
+- "rtcr Convert" option. Converts pickled clonesets (.dat files) to text
+(.tsv files).
+### Fixed
+- Pipeline exits when child process dies (instead of waiting indefinitely for
+results).
+- config.ini, by default thread name is included in log messages
+- test_RTCR.py tests the run_umi_group_ec method.
+- UMI record format is now "UMI:XXX:YYY:ZZZ" where XXX is the qualifier (e.g.
+"R1"), and YYY and ZZZ are the UMI nt sequence and ascii encoded (Phred+33)
+base quality scores. This fixes an issue as the base quality string (here the
+ZZZ part) contains the delimiter (":", i.e. Phred 25).
+- align.py minimally assigns one thread to the V and J alignment processes, so
+running RTCR with number of threads set to one ('-t 1' option) no longer
+causes a broken pipe ("IOError: [Errno 32] Broken pipe"), which happened
+because the J-alignment process would be given 0 threads to work with in
+align.py.
+- trie.py now removes nodes in Trie.__delitem__ function  without throwing
+AttributeError when trying to access the node.isset attribute (added
+Node.clear() function which itself resets the Node._isset attribute).
+- Update author email in setup.py to gmail account
+- Requirement of python 2.7+ in setup.py (python_require option)
+## [0.3.2]
+### Added
+- Change log
+- command line arguments (sys.argv) in pipeline log output (rtcr.log)
+### Changed
+- Checkout can handle three file inputs with forward, reverse, or merged
+reads. Output will be "_R1.fastq" and "_R2.fastq" for master and slave
+containing reads in the case of forward and reverse fastq files. Output will be
+"_R12.fastq" for merged read pairs.
+- Checkout adds a qualifier ("R1", "R2", or "R12") to each UMI
+- umi_group_ec handles UMI qualifiers for separating out forward, reverse,
+and merged read pairs.
+### Fixed
+- Checkout now reports "100%" when it has finished processing all
+the reads.
+- Pipeline responds to CTRL-C
+- Suppresses 'No handlers could be found for logger' message when using rtcr
+libraries without configuring a logger.
+- build_clone method in clone.py no longer accepts 0 length junction nt seqs,
+this prevents "ValueError: len(seq) < 1" from ConsensusQSequence (in cseq.c)
+- Outputs warning to log when no germline mismatches are found, instead of
+causing 'float division by zero'.
+- align.py now uses unique identifiers to keep track of the reads, separate
+from the read names. This prevents from potentially pasting different reads
+together when read names in a fastq file are not unique. This includes the
+case where read names are not unique before the first space (as bowtie2 drops
+everything after the first space).

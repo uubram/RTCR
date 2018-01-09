@@ -8,7 +8,8 @@ Installation
 ============
 
 RTCR requires an external aligner, we have chosen for Bowtie 2, but if you
-would like to use your own, read the section "switching aligners".
+would like to use your own, read the section "switching aligners". The pipeline
+has been successfully tested with python version 2.7.3.
 
 1) Install `Bowtie 2 <http://bowtie-bio.sourceforge.net/bowtie2/index.shtml>`_
 
@@ -19,10 +20,6 @@ and needs to be downloaded and installed separately (see step 1). Open a
 terminal and go to the newly extracted RTCR folder and run::
         
         python setup.py install
-
-Or if there are permission issues (e.g. not having root access) run::
-        
-        python setup.py install --user
 
 To test if everything went well, type "rtcr" (and press enter). This should
 result in a help being printed showing the command line options of RTCR.
@@ -35,6 +32,17 @@ the directory where the 'bowtie2-build' and 'bowtie2' executables reside::
         rtcr Config Aligner.location=/path/to/bowtie2/
 
 For more details on configuring RTCR, see the "Configuration" section
+
+Known installation issues
+=========================
+
+If there are permission issues (e.g. not having root access) run::
+        
+        python setup.py install --user
+
+If the vtrie module fails to install, first run::
+
+        pip install vtrie
 
 Quick start
 ===========
@@ -143,6 +151,14 @@ below:
 - results.tsv
         Final list of clones after error correction and post-processing.
 
+.. NOTE::
+
+        Clones produced during the run are output to .dat files (see above).
+        These can be converted to the same format as results.tsv using the
+        Convert option. For example::
+        
+                rtcr Convert -i r.dat -o r.tsv
+
 Analysing a barcoded HTS dataset
 ================================
 
@@ -165,7 +181,7 @@ then search for the remaining lower-case DNA bases. By default there are only
 2 mismatches allowed in the lower-case bases. To ask RTCR to search for the
 UMIs, run::
 
-        rtcr Checkout -i reads.fastq -b barcodes.txt -rc
+        rtcr Checkout -f reads.fastq -b barcodes.txt -rc
 
 The "-rc" switch is used to tell RTCR to also look for the UMI in the reverse
 complement of the reads. The above should create a file called "S1.fastq". This
@@ -178,6 +194,70 @@ Next, to perform barcode error correction::
 The "S1_umi_group_ec.fastq" file contains the barcode error corrected reads.
 After this one can perform the regular HTS analysis the same as for
 non-barcoded HTS datasets::
+
+        rtcr run --reads S1_umi_group_ec.fastq
+
+Analysing a paired-end barcoded HTS dataset
+===========================================
+
+We here assume the raw reads have been merged using a program such as pear_. In
+the latter case, we can expect to have the following files::
+
+        reads.assembled.fastq
+        reads.unassembled.forward.fastq
+        reads.unassembled.reverse.fastq
+        reads.discarded.fastq
+
+If almost all reads were successfully assembled, it is possible to continue
+with only the reads.assembled.fastq file::
+
+        rtcr Checkout -p reads.assembled.fastq -rc -b barcode.txt
+
+However, if many reads were not assembled, then it is possible to take along
+the unassembled reads as follows::
+
+        rtcr Checkout -f reads.unassembled.forward.fastq -rc -b barcode.txt
+        rtcr Checkout -f reads.unassembled.reverse.fastq -rc -b barcode.txt
+
+The output of the above commands depends on barcode.txt, which contains the
+barcode(s) rtcr should look for in the reads and sample names. If there is one
+sample called "S1", then the above Checkout commands produce the following
+three files (in order of the commands)::
+
+        S1_R12.fastq
+        S1_R1.fastq
+        S1_R2.fastq
+
+These files contain all the read pairs (assembled (R12) and unassembled
+(R1 and R2)) in which rtcr was able to find a barcode.
+
+.. NOTE::
+
+        Names of reads in the above fastq files will have the UMI appended to
+        the name, "UMI:XXX:YYY:ZZZ", where XXX is the read source (e.g. "R1"),
+        and YYY and ZZZ are the UMI nt sequence and ascii encoded (Phred+33)
+        base quality scores.
+
+Next, use umi_group_ec for barcode error correction::
+
+        cat S1_R1.fastq S1_R2.fastq S1_R12.fastq | rtcr umi_group_ec -o S1_umi_group_ec.fastq
+
+.. NOTE::
+
+        1. 
+                   Currently, there is no check if a read-pair contains a CDR3 in both
+                   R1 and R2. Therefore, it is technically possible for an
+                   unassembled read to provide a CDR3 twice (though then the
+                   question is why assembly failed).
+        2. 
+                   The format of the read names in S1_umi_group_ec.fastq is
+                   "UMI:XXX:YYY:ZZZ:WWW", where XXX is the source e.g. "R1",
+                   YYY is the UMI nt sequence, ZZZ is a fraction where the
+                   numerator indicates the UMI group number and the denominator
+                   the number of UMI groups that share the same UMI, and WWW is
+                   the number of reads in the current UMI group.
+
+Finally, rtcr can be run on the barcode corrected reads::
 
         rtcr run --reads S1_umi_group_ec.fastq
 

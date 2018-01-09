@@ -1168,9 +1168,9 @@ def test_umi_group_ec():
     from rtcr.seq import QSequence
     from rtcr.umi_group_ec import run_umi_group_ec
     
-    r1 = QSequence("UMI:A:I", "AGGCTTGTGCGTGACAGATAAAGCGCTGAGCTGAGCTCTG",
+    r1 = QSequence("UMI:R1:A:I", "AGGCTTGTGCGTGACAGATAAAGCGCTGAGCTGAGCTCTG",
             [40]*40)
-    r2 = QSequence("UMI:A:I",      "TGTGCGTGACAGATAAAGCGCTGAGCTG", [40]*28)
+    r2 = QSequence("UMI:R1:A:I",      "TGTGCGTGACAGATAAAGCGCTGAGCTG", [40]*28)
 
     class DummyWriter(object):
         def __init__(self):
@@ -1184,56 +1184,71 @@ def test_umi_group_ec():
     for records in [(r1, r2), (r2, r1)]:
         discarded = DummyWriter()
         res = run_umi_group_ec(records, k = 10, moff = 5,
-                min_score = 0, discarded = discarded)
+                min_score4offset = 0, min_score4merge = 0,
+                discarded = discarded)
         assert len(discarded) == 0
         assert len(res) == 1
-        assert res["A"].seq == r1.seq
-        assert res["A"].qual == [40]*40
-        assert res["A"].count == 2
-        assert res["A"].base_count == 68
-        assert res["A"].mutation_count == 0
+        assert len(res['R1:A']) == 1
+        rec = res['R1:A'][0]
+        assert rec.seq == r1.seq
+        assert rec.qual == [40]*40
+        assert rec.count == 2
+        assert rec.base_count == 68
+        assert rec.mutation_count == 0
 
     # r3 has 4 extra characters prepended to start of r1
-    r3 = QSequence("UMI:A:I", "ACCAAGGCTTGTGCGTGACAGATAAAGCGCTGAGCT", [40]*36)
+    r3 = QSequence('UMI:R1:A:I', "ACCAAGGCTTGTGCGTGACAGATAAAGCGCTGAGCT",
+            [40]*36)
     for records in permutations((r1, r2, r3)):
         discarded = DummyWriter()
         res = run_umi_group_ec(records, k = 15, moff = 10,
-                min_score = 0, discarded = discarded)
+                min_score4offset = 0, min_score4merge = 0,
+                discarded = discarded)
         assert len(discarded) == 0
         assert len(res) == 1
-        assert res["A"].seq == "ACCA" + r1.seq
-        assert res["A"].qual == [40]*44
-        assert res["A"].count == 3 
-        assert res["A"].base_count == 104 
-        assert res["A"].mutation_count == 0
+        assert len(res['R1:A']) == 1
+        rec = res['R1:A'][0]
+        assert rec.seq == "ACCA" + r1.seq
+        assert rec.qual == [40]*44
+        assert rec.count == 3 
+        assert rec.base_count == 104 
+        assert rec.mutation_count == 0
 
     discarded = DummyWriter()
-    res = run_umi_group_ec((r1, r2, r3), k = 50, moff = 5, min_score = 0,
+    res = run_umi_group_ec((r1, r2, r3), k = 50, moff = 5,
+            min_score4offset = 0, min_score4merge = 0,
             discarded = discarded)
     assert len(discarded) == 3 
     assert len(res) == 0
 
-    r4 = QSequence("UMI:T:I",  "ACCCCAAAAAGGTGGTG", [40]*17)
-    r5 = QSequence("UMI:T:I", "AACCCCAAAAAGGGGG", [40]*16)
+    r4 = QSequence('UMI:R1:T:I',  'ACCCCAAAAAGGTGGTG', [40]*17)
+    r5 = QSequence('UMI:R1:T:I', 'AACCCCAAAAAGGGGG', [40]*16)
     for records in permutations((r1, r2, r3, r4, r5)):
         discarded = DummyWriter()
         res = run_umi_group_ec(records, k = 15, moff = 10,
-                min_score = 0, discarded = discarded)
+                min_score4offset = 0, min_score4merge = 0,
+                discarded = discarded)
         assert len(discarded) == 0
         assert len(res) == 2
-        assert res["A"].seq == "ACCA" + r1.seq
-        assert res["A"].qual == [40]*44
-        assert res["A"].count == 3
-        assert res["A"].base_count == 104 
-        assert res["A"].mutation_count == 0
-        assert res["T"].seq == "AACCCCAAAAAGGNGGTG"
-        assert res["T"].qual == [40]*13 + [0] + [40]*4
-        assert res["T"].count == 2
-        assert res["T"].base_count == 33 
-        assert res["T"].mutation_count == 1
+        assert len(res['R1:A']) == 1
+        assert len(res['R1:T']) == 1
+        rec_a = res['R1:A'][0]
+        rec_b = res['R1:T'][0]
+        assert rec_a.seq == "ACCA" + r1.seq
+        assert rec_a.qual == [40]*44
+        assert rec_a.count == 3
+        assert rec_a.base_count == 104 
+        assert rec_a.mutation_count == 0
+        assert rec_b.seq == 'AACCCCAAAAAGGNGGTG'
+        assert rec_b.qual == [40]*13 + [0] + [40]*4
+        assert rec_b.count == 2
+        assert rec_b.base_count == 33 
+        assert rec_b.mutation_count == 1
 
     # TODO: more extensive tests with larger datasets
-    # TODO: test min_score parameter
+    # TODO: test min_score4offset parameter
+    # TODO: test min_score4merge parameter
+    # TODO: test UMI qualitifer (e.g. 'R1')
 
 def test_rtcr_heap():
     from itertools import permutations

@@ -4,6 +4,8 @@
 
 import logging
 logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
+
 from itertools import chain, groupby
 
 from clone import SearchableCloneSet

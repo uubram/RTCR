@@ -2,6 +2,7 @@
 
 import logging
 logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
 
 from subprocess import check_call, Popen, PIPE, STDOUT
 import os
@@ -61,19 +62,24 @@ def trim_and_send(v_aligner, j_aligner, results):
     :results: Queue, any V alignments will be turned into SAMRecord objects and
     put on this Queue.
     """
+    # since the V and J records can arrive out of order, attach a
+    # unique identifier.
+    uid = 0
     with j_aligner.stdin as j_in:
         for line in iter(v_aligner.stdout.readline, ''):
             rec = string2SAMRecord(line)
             if rec is None:
                 continue
-            results.put(rec)
+            results.put((uid, rec))
+            extended_qname = '%s:%s'%(uid, rec.QNAME)
             if rec.FLAG & 4:
-                trimmed_read = (rec.QNAME, "", "")
+                trimmed_read = (extended_qname, "", "")
             else:
                 qas, qae, tas, tae = cigar_intervals(rec.CIGAR, rec.POS - 1)
-                trimmed_read = (rec.QNAME, rec.SEQ[qae:],
+                trimmed_read = (extended_qname, rec.SEQ[qae:],
                         rec.QUAL[qae:])
             j_in.write("@%s\n%s\n+\n%s\n"%trimmed_read)
+            uid += 1 # Next unique identifier
 
 def collect_vj_output(v_records, j_aligner, results):
     """Collects V and J alignments and stores the corresponding SAMRecords in
@@ -97,10 +103,20 @@ def collect_vj_output(v_records, j_aligner, results):
         j_rec = string2SAMRecord(line)
         if j_rec is None:
             continue
-        tmp_j_recs[j_rec.QNAME] = j_rec
 
-        v_rec = v_records.get()
-        tmp_v_recs[v_rec.QNAME] = v_rec
+        # Retrieve unique identifier from the J record
+        j_qname_fields = j_rec.QNAME.split(':')
+        j_uid = int(j_qname_fields[0])
+
+        # Remove the uid from the QNAME field
+        line_fields = line.split('\t')
+        line_fields[0] = ':'.join(j_qname_fields[1:])
+        j_rec = string2SAMRecord('\t'.join(line_fields))
+
+        tmp_j_recs[j_uid] = j_rec
+
+        (v_uid, v_rec) = v_records.get()
+        tmp_v_recs[v_uid] = v_rec
 
         while len(tmp_v_recs) > 0:
             key = next(tmp_v_recs.iterkeys())
@@ -138,8 +154,8 @@ def get_vj_alignments(ref, reads, cmd_build_index, args_build_index,
         # e.g. if n_threads is 7, 4 will be given to v aligner and 3 to the
         # j aligner. This is because the v aligner is first and has to do more
         # work.
-        n_threads_v = int(round(n_threads / float(2)))
-        n_threads_j = n_threads // 2
+        n_threads_v = max(int(round(n_threads / float(2))), 1)
+        n_threads_j = max(n_threads // 2, 1)
         v_aligner = start_aligner(dirname, ref, "V", cmd_build_index,
             args_build_index, cmd_align, args_align_v, phred_encoding,
             n_threads_v)

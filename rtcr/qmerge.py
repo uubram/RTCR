@@ -3,6 +3,7 @@
 
 import logging
 logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
 
 from math import ceil, log10, sqrt, isnan
 from collections import namedtuple

@@ -4,6 +4,7 @@
 
 import logging
 logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
 
 from collections import deque, Iterable, namedtuple
 from itertools import izip
@@ -465,7 +466,7 @@ def build_clone(ref, v_rec, j_rec, include_cysphe,
     :v_rec: SAMRecord-like object containing alignment of V segment
     :j_rec: SAMRecord-like object containing alignment of J segment
     :include_cysphe: include codons of the conserved Cys and Phe residues when
-    extrating the CDR3 region from the alignments.
+    extracting the CDR3 region from the alignments.
     """
     assert v_rec.QNAME == j_rec.QNAME
     if v_rec.FLAG & 4 or j_rec.FLAG & 4: # segment unmapped
@@ -517,6 +518,10 @@ def build_clone(ref, v_rec, j_rec, include_cysphe,
 
     nt_jnc = seq[jncs:jnce]
     q_jnc = [ord(qch) - 33 for qch in v_rec.QUAL[jncs:jnce]]
+
+    # Do not accept empty junction sequence
+    if len(nt_jnc) < 1:
+        return None
 
     v_annot = IntervalAnnotation(
         allele = ref[vid],
@@ -622,4 +627,3 @@ class SearchableCloneSet(CloneSet):
             for clone1 in value1:
                 for clone2 in value2:
                     yield hd, clone1, clone2
-
