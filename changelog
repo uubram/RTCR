@@ -1,5 +1,11 @@
 # Change Log
 
+## [0.4.1]
+### Fixed
+- README.rst, indentation of enumeration in installation section. Removed
+superfluous bowtie2 reference at the end. Replaced RTCR hyperlink target at
+the end with an in place "RTCR package" hyperlink (fixes "Duplicate implicit
+target name" message from rstcheck program).
 ## [0.4.0]
 ### Added
 - filter to umi_group_ec. Reads that are too dissimilar to an existing

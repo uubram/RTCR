@@ -11,27 +11,27 @@ RTCR requires an external aligner, we have chosen for Bowtie 2, but if you
 would like to use your own, read the section "switching aligners". The pipeline
 has been successfully tested with python version 2.7.3.
 
-1) Install `Bowtie 2 <http://bowtie-bio.sourceforge.net/bowtie2/index.shtml>`_
+1. Install `Bowtie 2 <http://bowtie-bio.sourceforge.net/bowtie2/index.shtml>`_
 
-2) Install the RTCR_ package
+2. Install the `RTCR package <http://uubram.github.io/RTCR>`_
 
-Download the zip file and extract it. Bowtie 2 is not included in this file
-and needs to be downloaded and installed separately (see step 1). Open a
-terminal and go to the newly extracted RTCR folder and run::
-        
+   Download the zip file and extract it. Bowtie 2 is not included in this file
+   and needs to be downloaded and installed separately (see step 1). Open a
+   terminal and go to the newly extracted RTCR folder and run::
+
         python setup.py install
+   
+   To test if everything went well, type "rtcr" (and press enter). This should
+   result in a help being printed showing the command line options of RTCR.
 
-To test if everything went well, type "rtcr" (and press enter). This should
-result in a help being printed showing the command line options of RTCR.
-
-3) Configure RTCR
-
-RTCR needs to know where Bowtie 2 is installed, specifically it needs to know
-the directory where the 'bowtie2-build' and 'bowtie2' executables reside::
+3. Configure RTCR
+   
+   RTCR needs to know where Bowtie 2 is installed, specifically it needs to know
+   the directory where the 'bowtie2-build' and 'bowtie2' executables reside::
 
         rtcr Config Aligner.location=/path/to/bowtie2/
-
-For more details on configuring RTCR, see the "Configuration" section
+   
+   For more details on configuring RTCR, see the "Configuration" section
 
 Known installation issues
 =========================
@@ -330,8 +330,6 @@ analysis. See below for an example of how to load RTCR output from inside R::
         source("tcR_RTCR_parser.R")
         rtcr_data <- parse.rtcr("results.tsv")
 
-.. _bowtie2: http://bowtie-bio.sourceforge.net/bowtie2/index.shtml
-.. _RTCR: http://uubram.github.io/RTCR/
 .. _pear: http://sco.h-its.org/exelixis/web/software/pear/
 .. _tcR: https://cran.r-project.org/web/packages/tcR/index.html
 .. _R: https://www.r-project.org/
