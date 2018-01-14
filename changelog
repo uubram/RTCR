@@ -1,5 +1,8 @@
 # Change Log
 
+## [0.4.2]
+### Fixed
+- Corrected example command to "Checkout" unassembled reads.
 ## [0.4.1]
 ### Fixed
 - README.rst, indentation of enumeration in installation section. Removed

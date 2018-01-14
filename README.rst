@@ -216,10 +216,9 @@ with only the reads.assembled.fastq file::
 However, if many reads were not assembled, then it is possible to take along
 the unassembled reads as follows::
 
-        rtcr Checkout -f reads.unassembled.forward.fastq -rc -b barcode.txt
-        rtcr Checkout -f reads.unassembled.reverse.fastq -rc -b barcode.txt
+        rtcr Checkout -f reads.unassembled.forward.fastq -r reads.unassembled.reverse.fastq -rc -b barcode.txt
 
-The output of the above commands depends on barcode.txt, which contains the
+The output of the above command depends on barcode.txt, which contains the
 barcode(s) rtcr should look for in the reads and sample names. If there is one
 sample called "S1", then the above Checkout commands produce the following
 three files (in order of the commands)::
