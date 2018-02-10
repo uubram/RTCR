@@ -1,4 +1,4 @@
-__version__ = "0.4.2"
+__version__ = "0.4.3"
 
 import logging
 import logging.config
@@ -203,11 +203,11 @@ cmd_align)
 
     init_logging()
     if args.debug:
-        logger.setLevel(logging.DEBUG)
-        logger.debug("log level set to DEBUG")
+        logging.root.setLevel(logging.DEBUG)
+        logging.root.debug("log level set to DEBUG")
     if args.verbose:
-        logger.addHandler(logging.StreamHandler(stdout,))
-        logger.info("Writing log statements to stdout")
+        logging.root.addHandler(logging.StreamHandler(stdout,))
+        logging.root.info("Writing log statements to stdout")
     # Note, delaying import of modules that have a logger until after logging
     # has been initialised.
     from fileio import read_reference, zopen

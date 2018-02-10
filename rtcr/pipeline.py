@@ -106,6 +106,8 @@ class Pipeline(threading.Thread):
 
             self._listener.notify(("PROGRESSBAR", desc, "start"))
             while pool.task_count > 0 and not self.stopped():
+                if pool.error():
+                    raise Exception('Error occurred in worker pool')
                 sleep(self._update_interval)
                 frac = float(total_task_count - pool.task_count) / \
                         total_task_count

@@ -1,5 +1,24 @@
 # Change Log
 
+## [0.4.3]
+### Added
+- known issue to README.rst about the pipeline exiting with a
+"Error in worker pool" message in case of low memory (on linux the result of
+the OOM killer taking out a child process of the pipeline).
+- docs/_config.yml for loading github-pages minimal theme and add download
+buttons to the page.
+### Changed
+- Converted README.rst to README.md and placed it in /docs folder for use with
+github-pages. Thanks to Gijs Schroder (user seigenrocks on github) for helping
+to get github pages working again for RTCR.
+### Fixed
+- pipeline exits when child process dies instead of waiting indefinitely for
+results (same 'fix' in version 0.4.0 made pipeline report a child died, but
+neglected to make the pipeline exit)
+- "--debug" option of "rtcr run" sets debug level on root logger so that
+loggers in the other modules are also using the debug level
+- "--verbose" option of "rtcr run" command adds StreamHandler to root logger
+so that loggers in the other modules are also using this handler.
 ## [0.4.2]
 ### Fixed
 - Corrected example command to "Checkout" unassembled reads.

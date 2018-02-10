@@ -445,3 +445,6 @@ class ConnectedConsumerPool(object):
     @property
     def task_count(self):
         return self._ntasks
+
+    def error(self):
+        return self._error.is_set()
