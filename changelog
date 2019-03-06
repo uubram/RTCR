@@ -1,5 +1,7 @@
 # Change Log
-
+## [0.4.4]
+### Fixed
+- setup.py, drop reference to non-existant README.rst, include docs/README.md
 ## [0.4.3]
 ### Added
 - known issue to README.rst about the pipeline exiting with a

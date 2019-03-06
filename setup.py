@@ -6,7 +6,7 @@ import rtcr
 
 here = path.abspath(path.dirname(__file__))
 
-with open(path.join(here, 'README.rst')) as f:
+with open(path.join(here, 'docs', 'README.md')) as f:
     long_description= f.read()
 
 setup(
@@ -16,6 +16,7 @@ setup(
         description = 'A pipeline for complete and accurate recovery of TCR \
 repertoires from high throughput sequencing data',
         long_description = long_description,
+        long_description_content_type = 'text/markdown',
         author = 'Bram Gerritsen',
         author_email = 'bramgerr1@gmail.com',
         license = 'GPLv3',
