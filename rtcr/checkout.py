@@ -74,15 +74,6 @@ def checkout(fq1_fn, fq2_fn, adapters, max_mm, search_rc, paired = False):
     n_accepted = 0
     prev_time = time()
     for i, r1 in enumerate(fq1):
-        frac = float(fq1_filepos()) / fq1_filesize
-        if time() - prev_time > .5 or frac == 1.0:
-            prev_time = time()
-            stdout.write(term.EL(2) + term.CHA(0) + \
-                    "Processed %s records (%.2f%%), accepted %s (%.2f%%)"%(i,
-                        frac*100, n_accepted,
-                        (100*float(n_accepted)/i) if i > 0 else 0))
-            stdout.flush()
-
         if fq2:
             r2 = next(fq2)
             assert(r1.id == r2.id)
@@ -160,12 +151,17 @@ def checkout(fq1_fn, fq2_fn, adapters, max_mm, search_rc, paired = False):
                     if slave.UMI_length != len(slave_umi[0]):
                         continue
 
-            if not best_match or best_match[0][0] > master_match[0]:
+            if not best_match or best_match[0][0] > master_match[0] or \
+               (best_match[0][0] == master_match[0] and \
+                slave and slave_match[0] and \
+                (not best_match[1] or \
+                 not best_match[1][0] or \
+                 best_match[1][0] > slave_match[0])):
                 umi = [x + y for x,y in zip(master_umi, slave_umi)]
-                best_match = (master_match, sample_id, umi)
+                best_match = (master_match, slave_match, sample_id, umi)
 
         if best_match:
-            master_match, sample_id, umi = best_match
+            master_match, slave_match, sample_id, umi = best_match
             for (r, (out, typename)) in ((r1, outfiles[sample_id]["out1"]),
                     (r2, outfiles[sample_id]["out2"])):
                 if not out:
@@ -174,6 +170,16 @@ def checkout(fq1_fn, fq2_fn, adapters, max_mm, search_rc, paired = False):
                     umi[1]))
                 out.write("%s\n+\n%s\n"%(r.seq, r.qual_str))
             n_accepted += 1
+            
+        frac = float(fq1_filepos()) / fq1_filesize
+        if time() - prev_time > .5 or frac == 1.0:
+            prev_time = time()
+            stdout.write(term.EL(2) + term.CHA(0) + \
+                    "Processed %s records (%.2f%%), accepted %s (%.2f%%)"%(i + 1,
+                        frac*100, n_accepted,
+                        (100*float(n_accepted)/(i+1))))
+            stdout.flush()
+            
     stdout.write('\n')
 
 def prog_checkout(args):

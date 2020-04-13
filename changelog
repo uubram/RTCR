@@ -1,4 +1,12 @@
 # Change Log
+## [0.4.5]
+### Added
+- barcode.py, IUPAC DNA codes allowed in non-seed part of the adapter.
+### Fixed
+- checkout.py, reported number of records processed matches actual number of
+records processed.
+- checkout.py, handle adapters that have the same master but different slave
+sequences.
 ## [0.4.4]
 ### Fixed
 - setup.py, drop reference to non-existant README.rst, include docs/README.md

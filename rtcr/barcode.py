@@ -5,6 +5,25 @@ Barcode = namedtuple("Barcode",["sample_id", "master", "slave"])
 
 DNA_COMPLEMENT = string.maketrans("ATCG","TAGC")
 
+IUPAC = {
+    "A" : ["A"],
+    "C" : ["C"],
+    "G" : ["G"],
+    "T" : ["T"],
+    "U" : ["U"],
+    "R" : ["A", "G"],
+    "Y" : ["C", "T"],
+    "S" : ["G", "C"],
+    "W" : ["A", "T"],
+    "K" : ["G", "T"],
+    "M" : ["A", "C"],
+    "B" : ["C", "G", "T"],
+    "D" : ["A", "G", "T"],
+    "H" : ["A", "C", "T"],
+    "V" : ["A", "C", "G"],
+    "N" : ["A", "C", "G", "T"]
+}
+
 # TODO: use seq module for taking reverse complement
 def revcomp(seq):
     return seq.translate(DNA_COMPLEMENT)[::-1]
@@ -21,6 +40,9 @@ class Adapter(object):
         self._seed_end = seed_ranges[0][1]
         self._seed = adapter_str[self._seed_start : self._seed_end]
         assert(self._seed.isupper())
+        if any([not ch in "ACTG" for ch in self._seed]):
+            raise Exception("Adapter seed contains ambiguous or non-DNA bases.") 
+
         self._UMI_ranges = get_ranges(adapter_str,'N')
 
         if len(self._UMI_ranges) > 0:
@@ -38,6 +60,9 @@ class Adapter(object):
         self._rc_seed = revcomp(self._seed)
         self._rc_seed_start = len(self._adapter_str) - self._seed_end
         self._rc_seed_end = self._rc_seed_start + len(self._seed)
+
+        if any([not ch in IUPAC for ch in self._seq]):
+            raise Exception("Adapter contains non-IUPAC codes.")
 
     def has_UMI(self):
         return len(self._UMI_ranges) > 0
@@ -118,6 +143,8 @@ def get_ranges(s, ch):
 
 # Finds longest match between two sequences with at most max_mm mismatches.
 # Note: this method does not perform an alignment.
+# query is allowed to contain IUPAC codes. Whereas target should only contain
+# ACTGU
 def fuzzy_match_len(query, target, max_mm, direction, qstart, tstart):
     assert(direction in (1,-1))
     match_len = 0
@@ -125,7 +152,7 @@ def fuzzy_match_len(query, target, max_mm, direction, qstart, tstart):
     qpos = qstart
     tpos = tstart
     while True:
-        if query[qpos] == target[tpos] or query[qpos] == 'N':
+        if target[tpos] in IUPAC[query[qpos]]:
             match_len = (qpos - qstart) + 1
         else:
             if mm == max_mm:
@@ -149,7 +176,7 @@ def overlapped_findall(query, target):
             break
 
 # Finds all matches between query's seed sequence and the target sequence,
-# returning tuples with the number if mismatches between query and target
+# returning tuples with the number of mismatches between query and target
 # for each seed match found, and the position at which the query matched the
 # target.
 def fuzzy_findall(query, target, seed_start, seed_end, max_mm):
