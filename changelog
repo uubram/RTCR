@@ -1,4 +1,10 @@
 # Change Log
+## [0.4.6]
+### Fixed
+- checkout.py, when searching both orientations for master also both
+orientations are searched for the slave.
+- checkout.py, slave UMI is properly retrieved when the slave is found on the
+reverse complement of a read.
 ## [0.4.5]
 ### Added
 - barcode.py, IUPAC DNA codes allowed in non-seed part of the adapter.

@@ -25,7 +25,7 @@ def add_parser_arguments(parser):
             help = 'Number of mismatches allowed when determining length of \
 region that is matching between a pair of sequences.')
     parser.add_argument('-rc', '--reverse_complement', action = 'store_true',
-            help = 'Also look for (master) barcodes on reverse complement')
+            help = 'Also look for barcodes on reverse complement')
     return parser
 
 def get_best_match(matches, matches_rc):
@@ -142,20 +142,28 @@ def checkout(fq1_fn, fq2_fn, adapters, max_mm, search_rc, paired = False):
                     r = r2
 
                 slave_matches, slave_matches_rc = slave.locate_in(r.seq,
-                        max_mm, search_rc = False)
-                slave_match = get_best_match(slave_matches, slave_matches_rc)
+                        max_mm, search_rc = search_rc)
+                slave_match, slave_is_rc = get_best_match(slave_matches, slave_matches_rc)
+
+                if not slave_match: # No slave found
+                    continue
 
                 if slave.has_UMI(): # get umi
-                    slave_umi = slave.get_UMI(r.seq, r.qual_str,
-                            slave_match[1])
+                    if slave_is_rc:
+                        slave_umi_start = len(r.seq) - (slave_match[1] + len(slave.seq))
+                        slave_umi = slave.get_UMI(revcomp(r.seq),
+                                                  r.qual_str[::-1],
+                                                  slave_umi_start)
+                    else:
+                        slave_umi = slave.get_UMI(r.seq, r.qual_str,
+                                                  slave_match[1])
                     if slave.UMI_length != len(slave_umi[0]):
                         continue
 
             if not best_match or best_match[0][0] > master_match[0] or \
                (best_match[0][0] == master_match[0] and \
-                slave and slave_match[0] and \
-                (not best_match[1] or \
-                 not best_match[1][0] or \
+                slave_match and \
+                (not best_match[1] or not best_match[1][0] or \
                  best_match[1][0] > slave_match[0])):
                 umi = [x + y for x,y in zip(master_umi, slave_umi)]
                 best_match = (master_match, slave_match, sample_id, umi)
