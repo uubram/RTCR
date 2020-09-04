@@ -454,8 +454,7 @@ class CloneSet(object):
     def __contains__(self, item):
         return item in self._clones
 
-def build_clone(ref, v_rec, j_rec, include_cysphe,
-        classname = "AnnotatedClone"):
+def build_clone(ref, v_rec, j_rec, classname = "AnnotatedClone"):
     """Build clone from SAMRecord-like objects. Returns None if clone cannot be
     built due to unmapped alignment or because V and J alignments are in the
     opposite direction.
@@ -465,8 +464,6 @@ def build_clone(ref, v_rec, j_rec, include_cysphe,
     objects.
     :v_rec: SAMRecord-like object containing alignment of V segment
     :j_rec: SAMRecord-like object containing alignment of J segment
-    :include_cysphe: include codons of the conserved Cys and Phe residues when
-    extracting the CDR3 region from the alignments.
     """
     assert v_rec.QNAME == j_rec.QNAME
     if v_rec.FLAG & 4 or j_rec.FLAG & 4: # segment unmapped
@@ -495,12 +492,8 @@ def build_clone(ref, v_rec, j_rec, include_cysphe,
     jae += j_offset
 
     # Get junction from the sequence
-    if include_cysphe:
-        v_refpos_offset = -3
-        j_refpos_offset = 3
-    else:
-        v_refpos_offset = 0
-        j_refpos_offset = 0
+    v_refpos_offset = -3
+    j_refpos_offset = 3
     jncs = cigar_rpos2qpos(v_rec.CIGAR, v_rec.POS - 1,
             ref[vid].refpos + v_refpos_offset)
     j_rec_jnce = cigar_rpos2qpos(j_rec.CIGAR, j_rec.POS - 1,

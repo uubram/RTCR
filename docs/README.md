@@ -68,8 +68,8 @@ Analysing the barcoded sample:
 
     mkdir my_barcoded_analysis
     cd my_barcoded_analysis
-    rtcr Checkout -rc -b ../barcodes.txt -i ../umi_reads.fq.gz
-    rtcr umi_group_ec -i S1.fastq -o S1_umi_group_ec.fastq
+    rtcr Checkout -rc -b ../barcodes.txt -p ../umi_reads.fq.gz
+    rtcr umi_group_ec -i S1_R12.fastq -o S1_umi_group_ec.fastq
     rtcr run -i S1_umi_group_ec.fastq
 
 Usage
@@ -189,6 +189,16 @@ explained below:
     :   Clones after QMerge, IMerge, LMerge, and NMerge algorithms
         have run.
 
+-
+
+    discarded_clones.tsv
+
+    :   List of clones that did not make the cut for results.tsv
+        because they were out-of-frame, contained a stop codon, or
+        the 'junction_minimum_quality_score' field (see results.tsv section)
+        was below the 'min_phred_threshold' (default is 5; can be updated
+        using 'rtcr Config' command).
+
 -   
 
     results.tsv
@@ -198,10 +208,34 @@ explained below:
 > **note**
 >
 > Clones produced during the run are output to .dat files (see above).
-> These can be converted to the same format as results.tsv using the
+> These can be converted to [AIRR Community][AIRR-link] format using the
 > Convert option. For example:
 >
 >     rtcr Convert -i r.dat -o r.tsv
+
+results.tsv
+===========
+
+The final list of clones after error correction and post-processing. This is a
+tab-separated (tsv) file that conforms to the Adaptive Immune Receptor
+Repertoire ([AIRR Community][AIRR-link]) format version 1.3. See
+[AIRR Rearrangement schema](
+https://docs.airr-community.org/en/latest/datarep/rearrangements.html#)
+for details on the format. Included are also the following custom fields
+(i.e. not specified in the AIRR format):
+
+* junction\_quality\_scores
+ integer values separated by '|' indicating the Phred quality score for every
+ base in the junction.
+* junction\_minimum\_quality\_score
+ minimum integer value found in 'junction\_quality\_scores' field
+* v\_junction\_end
+ last nucleotide in the junction that belongs to the V-gene (1-based)
+* j\_junction\_start
+ first nucleotide in the junction that belongs to the J-gene (1-based)
+
+Note that some fields in the AIRR Community format are required to be present,
+even if they are not applicable and are left empty (e.g. the 'v\_cigar' field).
 
 Analysing a barcoded HTS dataset
 ================================
@@ -371,15 +405,14 @@ that are the same for both can be put in "args\_align\_base". The
 contain the phred encoding (33 or 64) and number of threads
 respectively. It is optional to use these in the arguments.
 
-Analyzing RTCR output with tcR R package
-========================================
+
+Analysing RTCR output with immunarch R package
+==============================================
 
 Data analysis of immune receptor repertoires can be performed using
-[tcR](https://cran.r-project.org/web/packages/tcR/index.html), a package
-for the [R](https://www.r-project.org/) software environment. RTCR
-provides an R script, named 'tcR\_RTCR\_parser.R', for loading RTCR
-output into the tcR package for analysis. See below for an example of
-how to load RTCR output from inside R:
+[immunarch](https://immunarch.com/), a package for the
+[R](https://www.r-project.org/) software environment. This package supports
+the [AIRR Community][AIRR-link] format making it capable of reading
+RTCR output ('results.tsv').
 
-    source("tcR_RTCR_parser.R")
-    rtcr_data <- parse.rtcr("results.tsv")
+[AIRR-link]:https://docs.airr-community.org/

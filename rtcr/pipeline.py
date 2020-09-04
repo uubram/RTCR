@@ -16,7 +16,7 @@ from align import get_vj_alignments
 from fileio import zopen, SAMFormat, LegacyCloneSetFormat, filesize
 from clone import CloneSet, build_clone
 from seq import get_error_stats
-from util import ConnectedConsumerPool, clone2str, nt2aa
+from util import ConnectedConsumerPool, clone2AIRRDict, nt2aa
 from qmerge import run_qmerge_on_bin
 from imerge import run_imerge_on_bin
 from lmerge import run_lmerge
@@ -134,12 +134,10 @@ class Pipeline(threading.Thread):
             Q_mm_stats_fn,
             Q_mm_stats_plot_fn,
             output_fn,
-            output_hdr,
-            output_fmt,
+            output_not_ok_fn,
             clone_classname,
             confidence,
             min_seqlen,
-            include_cysphe,
             min_phred_threshold,
             n_threads,
             update_interval,
@@ -179,15 +177,12 @@ class Pipeline(threading.Thread):
         :Q_mm_stats_plot_fn: name of file to output plot of observed quality vs
         base quality scores.
         :output_fn: name of file to output final clones to.
-        :output_hdr: header string of output file.
-        :output_fmt: detailed output format string of clones.
+        :output_not_ok_fn: name of file to output final discarded clones to.
         :clone_classname: string, classname of type of clone to build
         :confidence: right confidence limit (between 0 and 1), this is used to
         calculate how many bases are allowed to be mutated (both QMerge and
         IMerge), and how large clones may grow (IMerge).
         :min_seqlen: minimum sequence length for a clone
-        :include_cysphe: include codons for conserved Cys and Phe when
-        retrieving the CDR3 from a read to build a clone.
         :min_phred_threshold: minimum base quality in a clone for it to be
         reported in the final results.
         :n_threads: maximum number of threads/processes the pipeline is allowed
@@ -211,12 +206,10 @@ class Pipeline(threading.Thread):
         self._Q_mm_stats_fn = Q_mm_stats_fn
         self._Q_mm_stats_plot_fn = Q_mm_stats_plot_fn
         self._output_fn = output_fn
-        self._output_hdr = output_hdr
-        self._output_fmt = output_fmt
+        self._output_not_ok_fn = output_not_ok_fn
         self._clone_classname = clone_classname
         self._confidence = confidence
         self._min_seqlen = min_seqlen
-        self._include_cysphe = include_cysphe
         self._min_phred_threshold = min_phred_threshold
         self._n_threads = n_threads
         self._update_interval = update_interval
@@ -254,12 +247,8 @@ class Pipeline(threading.Thread):
         # Build clones and use alignments to count mismatches and indels
         cs = CloneSet()
         alnstats = {"V":{}, "J":{}}
-        if self._include_cysphe:
-            v_refpos_offset = -3
-            j_refpos_offset = 3
-        else:
-            v_refpos_offset = 0
-            j_refpos_offset = 0
+        v_refpos_offset = -3
+        j_refpos_offset = 3
 
         try:
             if output_alignments:
@@ -301,7 +290,7 @@ class Pipeline(threading.Thread):
                             "\t".join(map(str, j_rec)) + "\n")
 
                 clone = build_clone(self._ref, v_rec, j_rec,
-                        self._include_cysphe, self._clone_classname)
+                        self._clone_classname)
 
                 if clone is None:
                     continue
@@ -522,26 +511,30 @@ mm_o (%s, %s), mm_j (%s, %s), mm_tot (%s, %s)"%(seqlen,
         # Write clones to file #
         ########################
         self._listener.notify("Writing clones")
+        sequence_id = 0
         with open(self._output_fn, 'w') as res_ok:
-            with open("discarded_clones.tsv", 'w') as res_not_ok:
-                header = self._output_hdr
+            with open(self._output_not_ok_fn, 'w') as res_not_ok:
+                header = '\t'.join(\
+                        clone2AIRRDict(clone = None, ref = None).keys()) + '\n'
                 res_ok.write(header)
                 res_not_ok.write(header)
 
                 n_discarded = 0
                 for clone in sorted(cloneset,
                         key = lambda clone:(-clone.count, clone.seq)):
-                    min_phred = min(clone.qual)
-                    aa_seq = nt2aa(clone.seq)
-                    n_stop_codons = sum([aa == '*' for aa in aa_seq])
-                    frame = len(clone.seq) % 3
+                    record = clone2AIRRDict(clone = clone, ref = self._ref)
+                    min_phred = int(record['junction_minimum_quality_score'])
                     if min_phred < self._min_phred_threshold \
-                            or n_stop_codons > 0 or frame != 0:
+                            or record['stop_codon'] == 'T' or \
+                            record['vj_in_frame'] == 'F':
                         n_discarded += 1
                         out = res_not_ok
                     else:
                         out = res_ok
-                    out.write(clone2str(clone, fmt = self._output_fmt))
+                    sequence_id += 1
+                    record['sequence_id'] = str(sequence_id)
+                    out.write('\t'.join([v for k, v in record.iteritems()]) +\
+                            '\n')
         self._listener.notify("Discarded %s clones"%n_discarded)
 
     def stopped(self):

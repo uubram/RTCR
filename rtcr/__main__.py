@@ -1,4 +1,4 @@
-__version__ = "0.4.6"
+__version__ = "0.5.0"
 
 import logging
 import logging.config
@@ -145,7 +145,6 @@ def prog_pipeline(args):
     min_phred_threshold = int(config.get("Defaults", "min_phred_threshold"))
     clone_classname = config.get("Defaults", "clone_classname")
     min_seqlen = int(config.get("Defaults", "min_seqlen"))
-    include_cysphe = str2bool(config.get("Defaults", "include_cysphe"))
     species = config.get("Defaults", "species")
     gene = config.get("Defaults", "gene")
     update_interval = float(config.get("Defaults", "update_interval"))
@@ -156,8 +155,7 @@ def prog_pipeline(args):
     Q_mm_stats_plot_fn = config.get("Defaults", "Q_mm_stats_plot_fn")
     qplot_fn = config.get("Defaults", "qplot_fn")
     output_fn = config.get('Defaults', 'output_fn')
-    output_hdr = config.get('Defaults', 'output_hdr').decode('string_escape')
-    output_fmt = config.get('Defaults', 'output_fmt').decode('string_escape')
+    output_not_ok_fn = config.get('Defaults', 'output_not_ok_fn')
 
     # [Aligner] section
     location = config.get("Aligner", "location")
@@ -274,12 +272,10 @@ confidence: %(confidence)s\n\
             Q_mm_stats_fn = Q_mm_stats_fn,
             Q_mm_stats_plot_fn = Q_mm_stats_plot_fn,
             output_fn = output_fn,
-            output_hdr = output_hdr,
-            output_fmt = output_fmt,
+            output_not_ok_fn = output_not_ok_fn,
             clone_classname = clone_classname,
             confidence = confidence,
             min_seqlen = min_seqlen,
-            include_cysphe = include_cysphe,
             min_phred_threshold = min_phred_threshold,
             n_threads = n_threads,
             update_interval = update_interval,

@@ -8,7 +8,7 @@ logger.addHandler(logging.NullHandler())
 from sys import stdout
 import cPickle as pickle
 
-from util import clone2str
+from util import clone2str, clone2AIRRDict
 import config
 
 def add_parser_arguments(parser):
@@ -19,17 +19,19 @@ def add_parser_arguments(parser):
     return parser
 
 def prog_Convert(args):
-    output_hdr = config.get('Defaults', 'output_hdr').decode('string_escape')
-    output_fmt = config.get('Defaults', 'output_fmt').decode('string_escape')
     infile = stdin if args.i is None else open(args.i, 'r')
     outfile = stdout if args.o is None else open(args.o, 'w')
 
     cloneset = pickle.load(infile)
 
-    outfile.write(output_hdr)
+    outfile.write('\t'.join(
+        clone2AIRRDict(clone = None, ref = None).keys()) + '\n')
     for clone in sorted(cloneset, key = lambda clone:clone.count,
             reverse = True):
-        outfile.write(clone2str(clone, fmt = output_fmt))
+        outfile.write('\t'.join(
+            [v for k, v in \
+                    clone2AIRRDict(clone = clone, ref = None).iteritems()]) \
+                    + '\n')
 
 def main():
     import argparse

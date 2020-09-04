@@ -4,6 +4,7 @@ import logging
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
+from collections import OrderedDict
 from itertools import izip, count
 from math import sqrt, log, factorial, pow
 import re
@@ -16,6 +17,8 @@ import multiprocessing as mp
 import shutil
 import warnings
 import signal
+from clone import AnnotatedClone
+from allele import AlleleContainer
 
 codon2aa = {
     "TTT" : "F",
@@ -114,6 +117,113 @@ def clone2str(clone, fmt):
 
     js1 = js + 1 # 1-based start nucleotide of J gene
     return fmt%locals()
+
+def clone2AIRRDict(clone, ref):
+    """Turn a clone into a dictionary object that conforms to the
+    AIRR Rearrangement schema. See
+    https://docs.airr-community.org/en/stable/datarep/rearrangements.html
+    for more details on the format.
+    
+    :clone: instance of AnnotatedClone
+    :ref: instance of AlleleContainer containing germline reference for
+    the clone
+    """
+    # AIRR format fields
+    required_fields = [
+            'sequence_id',
+            'sequence',
+            'rev_comp',
+            'productive',
+            'v_call',
+            'd_call',
+            'j_call',
+            'sequence_alignment',
+            'germline_alignment',
+            'junction',
+            'junction_aa',
+            'v_cigar',
+            'd_cigar',
+            'j_cigar']
+    optional_fields = [
+            'duplicate_count',
+            'vj_in_frame',
+            'stop_codon',
+            'cdr3_start',
+            'cdr3_end',
+            'v_sequence_end',
+            'j_sequence_start']
+    custom_fields = [
+            'junction_quality_scores',
+            'junction_minimum_quality_score',
+            'v_junction_end',
+            'j_junction_start']
+    fields = required_fields + optional_fields + custom_fields
+    res = OrderedDict([(field, '') for field in fields])
+
+    if clone is None and ref is None:
+        return res
+
+    if not isinstance(clone, AnnotatedClone):
+        raise ValueError('clone is not an instance of AnnotatedClone')
+
+    if not ref is None and not isinstance(ref, AlleleContainer):
+        raise ValueError('ref is not an instance of AlleleContainer')
+
+    vid = clone.v.allele.name
+    jid = clone.j.allele.name
+
+    res['rev_comp'] = 'F'
+    res['v_call'] = vid
+    res['j_call'] = jid
+    res['junction'] = clone.seq
+    res['junction_aa'] = nt2aa(clone.seq)
+    res['duplicate_count'] = str(clone.count)
+
+    # Custom fields
+    res['junction_quality_scores'] = '|'.join(map(str, clone.qual))
+    res['junction_minimum_quality_score'] = str(min(clone.qual))
+    res['v_junction_end'] = str(clone.v.end)
+    res['j_junction_start'] = str(clone.j.start + 1)
+
+    if not ref is None:
+        v_ref = ref[vid]
+        j_ref = ref[jid]
+
+        full_vj_seq = v_ref.seq[:(v_ref.refpos - 3)] + \
+                clone.seq + j_ref.seq[(j_ref.refpos + 3):]
+        full_vj_seq_aa = nt2aa(full_vj_seq)
+
+        res['sequence'] = full_vj_seq
+
+        # expected frame of last base in the full VJ sequence
+        expected_frame = (len(j_ref.seq) - j_ref.refpos) % 3
+
+        res['vj_in_frame'] = 'T' \
+                if len(res['sequence']) % 3 == expected_frame else 'F'
+        res['stop_codon'] = 'T' \
+                if sum([ch == '*' for ch in full_vj_seq_aa]) > 0 \
+                else 'F'
+
+        # Check if the conserved cys and phe residues match the
+        # germline
+        conserved_5prime = res['junction_aa'][0] == \
+                nt2aa(v_ref.seq[v_ref.refpos - 3 : v_ref.refpos])
+        conserved_3prime = res['junction_aa'][-1] == \
+                nt2aa(j_ref.seq[j_ref.refpos : j_ref.refpos + 3])
+        res['productive'] = 'T' \
+                if conserved_5prime and conserved_3prime and \
+                res['stop_codon'] == 'F' else 'F'
+
+        # Note: AIRR format uses 1-based closed intervals
+        # which is different from RTCR which follows the python
+        # convention of 0-based open intervals
+        res['cdr3_start'] = str(v_ref.refpos + 1)
+        res['cdr3_end'] = str(int(res['cdr3_start']) + \
+                len(res['junction']) - 6 - 1)
+        res['v_sequence_end'] = str(v_ref.refpos - 3 + clone.v.end)
+        res['j_sequence_start'] = str(v_ref.refpos - 3 + clone.j.start + 1)
+
+    return res
 
 try:
     from scipy import stats

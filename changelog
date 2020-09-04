@@ -1,4 +1,21 @@
 # Change Log
+## [0.5.0] 2020-09-04
+### Changed
+- pipeline.py and convert.py, output clones in AIRR format
+### Added
+- config.ini, 'output_not_ok_fn' option specifying the filename for clones
+that are discarded by the post-processing after error correction
+- docs/README.md, "results.tsv" section explaining the new output format,
+including custom fields that are not specified by the AIRR format.
+"Analysing RTCR output with immunarch R package" section.
+### Removed
+- config.ini, 'include_cysphe', 'output_hdr', and 'output_fmt' options
+- tcR_RTCR_parser.R, because it cannot parse RTCR output which is now in
+AIRR format
+- docs/README.md, "Analyzing RTCR output with tcR R package" section.
+### Fixed
+- docs/README.md, barcode example "Quick start" section works with current
+version of RTCR
 ## [0.4.6]
 ### Fixed
 - checkout.py, when searching both orientations for master also both

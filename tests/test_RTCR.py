@@ -78,7 +78,7 @@ def test_fastq_io():
         with pytest.raises(Exception) as excinfo:
             s = f.next()
         
-        assert(excinfo.value.message == "Quality score (42) not in [0, 41]")
+        assert(str(excinfo.value) == "Quality score (42) not in [0, 41]")
 
         #TODO: test for fastq files with Solexa and Illumina1.3
         #TODO: test faulty fastq files (also for wrong alphabet?)
@@ -1303,7 +1303,7 @@ def test_rtcr_heap():
         assert len(h) == 0
         h.push("A")
         h.push("A")
-    assert excinfo.value.message == "Item already on the heap."
+    assert(str(excinfo.value) == "Item already on the heap.")
 
     assert len(h) == 1
     assert h.pop() == "A"
@@ -1312,13 +1312,13 @@ def test_rtcr_heap():
     with pytest.raises(Exception) as excinfo:
         assert len(h) == 0 
         h.pop()
-    assert excinfo.value.message == "Cannot pop from empty heap."
+    assert(str(excinfo.value) == "Cannot pop from empty heap.")
 
     # Test peeking empty heap fails
     with pytest.raises(Exception) as excinfo:
         assert len(h) == 0
         h.peek()
-    assert excinfo.value.message == "Cannot peek empty heap."
+    assert(str(excinfo.value) == "Cannot peek empty heap.")
 
 def helperfunc_test_cigar_intervals(load_c):
     if load_c:
@@ -1945,8 +1945,8 @@ def test_build_clone(vjref):
     qual = 'I' * len(seq)
     seq2 = seq[len(preseq) + len(vseq):]
     qual2 = qual[len(preseq)+ len(vseq):]
-    nt_jnc_v = vseq[vjref[vid].refpos:]
-    nt_jnc_j = jseq[:vjref[jid].refpos]
+    nt_jnc_v = vseq[vjref[vid].refpos - 3:]
+    nt_jnc_j = jseq[:vjref[jid].refpos + 3]
     nt_jnc = nt_jnc_v + oseq + nt_jnc_j
 #    print seq
 #    print " "*len(preseq) + "v"*len(vseq) + "o"*len(oseq) + "j"*len(jseq)
@@ -1960,12 +1960,14 @@ def test_build_clone(vjref):
             QUAL = 'I' * len(seq2))
 
     
-    c1 = build_clone(vjref, v_rec, j_rec, False)
+    c1 = build_clone(vjref, v_rec, j_rec)
     assert c1.v.allele.name == vid
     assert c1.j.allele.name == jid
     assert c1.seq == nt_jnc
 
-    c2 = build_clone(vjref, v_rec, j_rec, False, "Clone")
+    c2 = build_clone(vjref, v_rec, j_rec, "Clone")
+    assert not hasattr(c2, 'v')
+    assert c2.seq == nt_jnc
 #    print c2
 #    assert False
 
@@ -1977,7 +1979,8 @@ def test_get_vj_alignments(vjref):
     from itertools import cycle, izip, count
     import os
 
-    random.seed(1)
+    random.seed(12)
+    n_iter = 1000 
 
     v_alleles = vjref.get_alleles(region = "V")
     j_alleles = vjref.get_alleles(region = "J")
@@ -1988,7 +1991,7 @@ def test_get_vj_alignments(vjref):
             count(),
             cycle(v_alleles),
             cycle(j_alleles)):
-        if i >= 1000:
+        if i >= n_iter:
             break
         # in the test reference the V and J alleles are guaranteed to not end
         # on a "T" nucleotide. Hence, here we add the "T" to properly mark the
@@ -2002,7 +2005,7 @@ def test_get_vj_alignments(vjref):
         if i % 2 == 1:
             qseq = qseq.reverse_complement(qseq.name + "rc")
         qseqs.append(qseq)
-    assert len(qseqs) == 1000
+    assert len(qseqs) == n_iter
 
     with TemporaryDirectory() as tmpdir:
         fq_fn = os.path.join(tmpdir, "ref.fq")
@@ -2020,8 +2023,8 @@ def test_get_vj_alignments(vjref):
                 cmd_build_index, 
                 args_build_index, cmd_align, args_align_v, args_align_j,
                 phred_encoding = 33, n_threads = 7)}
-        assert len(results) == 1000
-        for qseq in qseqs:
+        assert len(results) == n_iter 
+        for i,qseq in enumerate(qseqs):
             assert qseq.name in results
 
             v_rec, j_rec = results[qseq.name]
@@ -2032,6 +2035,192 @@ def test_get_vj_alignments(vjref):
             assert v_rec.CIGAR == "%sS50M62S"%len_pre_seq
             assert j_rec.RNAME == jid
             assert j_rec.CIGAR == "12S50M"
+
+def test_clone2AIRRDict():
+    from rtcr.allele import Allele, AlleleContainer
+    from rtcr.clone import AnnotatedClone
+    from rtcr.seq import IntervalAnnotation
+    from rtcr.util import clone2AIRRDict
+ 
+    gen_allele = lambda gid, seq, refpos:\
+        Allele(species = "", name = gid, functionality = 'F',
+            refpos = refpos, acc_nr = str(hash(gid)), seq = seq)
+
+    def gen_clone(v_allele, j_allele, count = 1, oseq = '',
+            score = 20):
+        jncs = v_allele.refpos - 3
+        seq = v_allele.seq[jncs:] + oseq + j_allele.seq[:j_allele.refpos + 3]
+        vs = 0
+        ve = len(v_allele.seq) - jncs
+        js = ve + len(oseq)
+        je = len(seq)
+        v_annot = IntervalAnnotation(v_allele, vs, ve, score)
+        j_annot = IntervalAnnotation(j_allele, js, je, score)
+        return AnnotatedClone(v_annot, None, j_annot, None,
+                (seq, [40]*len(seq), count))
+    v1 = gen_allele(gid = 'TRBV1*01', seq = 'AAATGCACC', refpos = 6)
+    v2 = gen_allele(gid = 'TRBV2*01', seq = 'GGTGCGTGCACCACC', refpos = 9)
+    j1 = gen_allele(gid = 'TRBJ1*01', seq = 'GAAGCTTTCTTTGGA', refpos = 9)
+    j2 = gen_allele(gid = 'TRBJ2*01', seq = 'TACTTCGGCGCCGGGACCG', refpos = 3)
+    ref = AlleleContainer()
+    ref.add(v1)
+    ref.add(v2)
+    ref.add(j1)
+    ref.add(j2)
+    oseq = 'CCC'
+    clone1_full_seq = v1.seq + oseq + j1.seq
+    clone1_junction = v1.seq[v1.refpos - 3:] + oseq + j1.seq[:j1.refpos + 3]
+
+    clone1 = gen_clone(v_allele = v1, j_allele = j1, oseq = oseq)
+
+    d = clone2AIRRDict(clone = clone1, ref = ref)
+
+    assert all([isinstance(v, str) for k, v in d.iteritems()])
+
+    # Test required fields
+    assert d['rev_comp'] == 'F'
+    assert d['v_call'] == 'TRBV1*01'
+    assert d['j_call'] == 'TRBJ1*01'
+    assert d['sequence'] == 'AAATGCACCCCCGAAGCTTTCTTTGGA'
+    assert d['junction'] ==    'TGCACCCCCGAAGCTTTCTTT'
+    assert d['junction_aa'] == 'CTPEAFF'
+
+    # clone 1 full sequence: AAATGCACCCCCGAAGCTTTCTTTGGA
+    #                           --------------------- junction
+    #                              ---------------    cdr3
+    #                        --------- v sequence
+    #                                    --------------- j sequence
+    # Test optional fields
+    assert d['duplicate_count'] == '1'
+    assert d['productive'] == 'T'
+    assert d['vj_in_frame'] == 'T'
+    assert d['stop_codon'] == 'F'
+    assert d['cdr3_start'] == '7'
+    assert d['cdr3_end'] == '21'
+    assert d['v_sequence_end'] == '9'
+    assert d['j_sequence_start'] == '13'
+
+    # Test custom fields
+    assert d['junction_quality_scores'] == '|'.join(['40']*len(d['junction']))
+    assert d['junction_minimum_quality_score'] == '40'
+    assert d['v_junction_end'] == '6'
+    assert d['j_junction_start'] == '10'
+
+    # Test if fields are the same when no clone is provided
+    assert clone2AIRRDict(clone = None, ref = None).keys() == d.keys()
+
+    #for k, v in d.iteritems():
+    #    print '%s : %s'%(k, v)
+
+    # Test out of frame clone
+    clone2 = gen_clone(v_allele = v2, j_allele = j1, count = 123, oseq = 'CC')
+    d = clone2AIRRDict(clone = clone2, ref = ref)
+    assert d['sequence'] == 'GGTGCGTGCACCACCCCGAAGCTTTCTTTGGA'
+    assert d['rev_comp'] == 'F'
+    assert d['v_call'] == 'TRBV2*01'
+    assert d['j_call'] == 'TRBJ1*01'
+    assert d['junction'] == 'TGCACCACCCCGAAGCTTTCTTT'
+    assert d['junction_aa'] == 'CTTPKLS'
+    assert d['duplicate_count'] == '123'
+    assert d['productive'] == 'F'
+    assert d['vj_in_frame'] == 'F'
+    assert d['stop_codon'] == 'F'
+    assert d['cdr3_start'] == '10'
+    assert d['cdr3_end'] == '26'
+    assert d['v_sequence_end'] == '15'
+    assert d['j_sequence_start'] == '18'
+    assert d['junction_quality_scores'] == '|'.join(['40']*len(d['junction']))
+    assert d['junction_minimum_quality_score'] == '40'
+    assert d['v_junction_end'] == '9'
+    assert d['j_junction_start'] == '12'
+
+    # Test clone with stop codon
+    clone3 = gen_clone(v_allele = v1, j_allele = j2, count = 1, oseq = 'TAG')
+    d = clone2AIRRDict(clone = clone3, ref = ref)
+
+    assert d['sequence'] == 'AAATGCACCTAGTACTTCGGCGCCGGGACCG'
+    assert d['rev_comp'] == 'F'
+    assert d['v_call'] == 'TRBV1*01'
+    assert d['j_call'] == 'TRBJ2*01'
+    assert d['junction'] == 'TGCACCTAGTACTTC'
+    assert d['junction_aa'] == 'CT*YF'
+    assert d['duplicate_count'] == '1'
+    assert d['productive'] == 'F'
+    assert d['vj_in_frame'] == 'T'
+    assert d['stop_codon'] == 'T'
+    assert d['cdr3_start'] == '7'
+    assert d['cdr3_end'] == '15'
+    assert d['v_sequence_end'] == '9'
+    assert d['j_sequence_start'] == '13'
+    assert d['junction_quality_scores'] == '|'.join(['40']*len(d['junction']))
+    assert d['junction_minimum_quality_score'] == '40'
+    assert d['v_junction_end'] == '6'
+    assert d['j_junction_start'] == '10'
+
+    # Test clone without reference
+    d = clone2AIRRDict(clone = clone3, ref = None)
+    assert d['sequence'] == ''
+    assert d['rev_comp'] == 'F'
+    assert d['v_call'] == 'TRBV1*01'
+    assert d['j_call'] == 'TRBJ2*01'
+    assert d['junction'] == 'TGCACCTAGTACTTC'
+    assert d['junction_aa'] == 'CT*YF'
+    assert d['duplicate_count'] == '1'
+    assert d['productive'] == ''
+    assert d['vj_in_frame'] == ''
+    assert d['stop_codon'] == ''
+    assert d['cdr3_start'] == ''
+    assert d['cdr3_end'] == ''
+    assert d['v_sequence_end'] == ''
+    assert d['j_sequence_start'] == ''
+    assert d['junction_quality_scores'] == '|'.join(['40']*len(d['junction']))
+    assert d['junction_minimum_quality_score'] == '40'
+    assert d['v_junction_end'] == '6'
+    assert d['j_junction_start'] == '10'
+
+    # Test clone with non-synonymous mutation in conserved residue
+    clone4 = AnnotatedClone(
+            v = IntervalAnnotation(
+                allele = v1,
+                start = 0,
+                end = len(v1.seq),
+                score = 0),
+            d = None,
+            j = IntervalAnnotation(
+                allele = j1,
+                start = len(v1.seq) + 3,
+                end = len(v1.seq) + 3 + len(j1.seq),
+                score = 0),
+            c = None,
+            other = ('TGGACCCCCGAAGCTTTCTTT', [40]*21, 1))
+    #                 --- Cys -> Trp
+    d = clone2AIRRDict(clone = clone4, ref = ref)
+    assert d['rev_comp'] == 'F'
+    assert d['v_call'] == 'TRBV1*01'
+    assert d['j_call'] == 'TRBJ1*01'
+    assert d['sequence'] == 'AAATGGACCCCCGAAGCTTTCTTTGGA'
+    assert d['junction'] ==    'TGGACCCCCGAAGCTTTCTTT'
+    assert d['junction_aa'] == 'WTPEAFF'
+    assert d['productive'] == 'F'
+    assert d['vj_in_frame'] == 'T'
+    assert d['stop_codon'] == 'F'
+
+    # Get empty AIRR dictionary
+    d = clone2AIRRDict(clone = None, ref = None)
+    assert len(d.keys()) > 1
+    assert all([v == '' for k, v in d.iteritems()])
+
+    # Test bad parameters
+    with pytest.raises(ValueError) as excinfo:
+        clone2AIRRDict(clone = '', ref = '')
+
+    assert(str(excinfo.value) == 'clone is not an instance of AnnotatedClone')
+
+
+    with pytest.raises(ValueError) as excinfo:
+        clone2AIRRDict(clone = clone1, ref = '')
+
+    assert(str(excinfo.value) == 'ref is not an instance of AlleleContainer')
 
 #def test_qmerge():
 #    from rtcr.fileio import zopen, LegacyCloneSetFormat 
