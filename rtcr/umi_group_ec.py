@@ -178,7 +178,8 @@ def prog_umi_group_ec(args):
         
 def main():
     import argparse
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+            formatter_class = argparse.ArgumentDefaultsHelpFormatter)
     add_parser_arguments(parser)
     args = parser.parse_args()
 

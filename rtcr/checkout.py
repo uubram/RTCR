@@ -214,7 +214,8 @@ def prog_checkout(args):
         checkout(fq12_fn, None, adapters, max_mm, search_rc, paired = True)
             
 def main():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+            formatter_class = argparse.ArgumentDefaultsHelpFormatter)
     add_parser_arguments(parser)
     args = parser.parse_args()
     prog_checkout(args)

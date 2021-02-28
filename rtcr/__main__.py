@@ -1,4 +1,4 @@
-__version__ = "0.5.0"
+__version__ = "0.5.1"
 
 import logging
 import logging.config
@@ -110,13 +110,15 @@ def parse_cmdline():
 
     # Add Checkout program
     parser_Checkout = subparsers.add_parser("Checkout",
-            help = "Perform demultiplexing and UMI extraction")
+            help = "Perform demultiplexing and UMI extraction",
+            formatter_class = argparse.ArgumentDefaultsHelpFormatter)
     parser_Checkout = checkout.add_parser_arguments(parser_Checkout)
     parser_Checkout.set_defaults(func = checkout.prog_checkout)
 
     # Add UMI_group_ec program
     parser_umi_group_ec = subparsers.add_parser("umi_group_ec",
-            help = "Perform UMI group error correction")
+            help = "Perform UMI group error correction",
+            formatter_class = argparse.ArgumentDefaultsHelpFormatter)
     parser_umi_group_ec = umi_group_ec.add_parser_arguments(
             parser_umi_group_ec)
     parser_umi_group_ec.set_defaults(func = umi_group_ec.prog_umi_group_ec)
