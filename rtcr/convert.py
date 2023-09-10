@@ -19,7 +19,7 @@ def add_parser_arguments(parser):
     return parser
 
 def prog_Convert(args):
-    infile = stdin if args.i is None else open(args.i, 'r')
+    infile = open(args.i, 'r')
     outfile = stdout if args.o is None else open(args.o, 'w')
 
     cloneset = pickle.load(infile)

@@ -32,6 +32,6 @@ repertoires from high throughput sequencing data',
                 extra_compile_args = ['-std=c99', '-pedantic', '-Wall',
                     '-Wextra', '-O3'],
                 )],
-        install_requires = ['vtrie>=0.0.1', 'editdistance>=0.3.1'],
+        install_requires = ['vtrie>=0.0.1', 'editdistance==0.3.1'],
         classifiers = ['Programming Language :: Python :: 2 :: Only'],
         python_requires = '>=2.7, <3')

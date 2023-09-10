@@ -6,6 +6,7 @@ logger.addHandler(logging.NullHandler())
 
 import os
 import gzip
+import re
 from collections import namedtuple
 from itertools import groupby
 from seq import Sequence, QSequence
@@ -319,66 +320,72 @@ class LegacyAlleleContainerFormat(FileFormat):
                 refpos = -1
             yield Allele(species, name, functionality, refpos, acc_nr, rec.seq)
 
+def IMGT_Sequence2Allele(rec):
+    '''Converts a Sequence object as produced by FastaFormat.records_in on an
+    IMGT fasta file to an Allele object.
+    '''
+    fields = rec.name.split("|")
+    if len(fields) <= 5:
+        raise ValueError("In an IMGT reference fasta, \
+record titles contain at least 5 fields delimited by \"|\".")
+    acc_nr, name, species, functionality, region = fields[:5]
+        
+    # Turn sequence to upper case
+    seq = rec.seq.upper()
+
+    # Concatenate and capitalize species name
+    # e.g. "Homo sapiens" becomes "HomoSapiens"
+    species = species.split(" ")
+    species[1] = species[1].capitalize() # e.g. Sapiens
+    species = ''.join(species)
+
+    # Create short name for region, e.g. "V-REGION"
+    region = region.replace("-REGION","") 
+
+    region_from_name = name[3]
+    if region != region_from_name and region_from_name != 'C':
+        raise ValueError("Region from allele name (%s) does \
+not match region field (%s)."%(region, region_from_name))
+
+    refpos = -1
+        
+    # Searching for reference position in V and J regions.
+    if region == 'V':
+        # For aligned alleles the conserved cysteine
+        # is at position 104 (aa index).
+        # So the CDR3 start (right after the cys),
+        # is at 104 * 3 = 312
+        offset = seq[:312].count('.') # Count gaps
+        refpos = 312 - offset
+    elif region == 'J':
+        # Search for conserved Phe/Trp-Gly-X-Gly motif
+        motif="((TT[TC])|(TGG))GG[TCAG]{4}GG[TCAG]{1}"
+        m = re.search(motif,seq)
+        if m == None: # motif not found
+            liberal_motif = \
+                "[TCAG]{3}GG[TCAG]{4}[TCAG]{1}"
+            m = re.search(liberal_motif,seq)
+            if m == None:
+                raise Exception("Unable to find X-Gly-X-Gly motif in \
+J-REGION allele in %s"%name)
+            else:
+                logger.warning("Had to use liberal X-Gly-X-Gly motif \
+to find J-REGION reference position in %s"%name)
+        if seq.count('.'):
+            raise Exception("Gaps \".\" found in J-REGION allele %s"%\
+                    name)
+        refpos = m.start()
+
+    seq = seq.replace('.','')
+    return Allele(species, name, functionality, refpos, acc_nr, seq)
+
 class IMGTAlleleContainerFormat(FileFormat):
     """Reads IMGT immune reference fasta."""
     @staticmethod
     def records_in(handle):
-        fa = FastaFormat(handle)
+        fa = FastaFormat.records_in(handle)
         for rec in fa:
-            fields = rec.name.split("|")
-            if len(fields) <= 5:
-                raise ValueError("In an IMGT reference fasta, \
-record titles contain at least 5 fields delimited by \"|\".")
-            acc_nr, name, species, functionality, region = fields[:5]
-                
-            # Turn sequence to upper case
-            seq = rec.seq.upper()
-
-            # Concatenate and capitalize species name
-            # e.g. "Homo sapiens" becomes "HomoSapiens"
-            species = species.split(" ")
-            species[1] = species[1].capitalize() # e.g. Sapiens
-            species = ''.join(species)
-
-            # Create short name for region, e.g. "V-REGION"
-            region = region.replace("-REGION","") 
-
-            region_from_name = name[3]
-            if region != region_from_name and region_from_name != 'C':
-                raise ValueError("Region from allele name (%s) does \
-not match region field (%s)."%(region, region_from_name))
-
-            refpos = -1
-                
-            # Searching for reference position in V and J regions.
-            if region == 'V':
-                # For aligned alleles the conserved cysteine
-                # is at position 104 (aa index).
-                # So the CDR3 start (right after the cys),
-                # is at 104 * 3 = 312
-                offset = seq[:312].count('.') # Count gaps
-                refpos = 312 - offset
-            elif region == 'J':
-                # Search for conserved Phe/Trp-Gly-X-Gly motif
-                motif="((TT[TC])|(TGG))GG[TCAG]{4}GG[TCAG]{1}"
-                m = re.search(motif,seq)
-                if m == None: # motif not found
-                    liberal_motif = \
-                        "[TCAG]{3}GG[TCAG]{4}[TCAG]{1}"
-                    m = re.search(liberal_motif,seq)
-                    if m == None:
-                        raise Exception("Unable to find X-Gly-X-Gly motif in \
-J-REGION allele in %s"%name)
-                    else:
-                        logger.warning("Had to use liberal X-Gly-X-Gly motif \
-to find J-REGION reference position in %s"%name)
-                if seq.count('.'):
-                    raise Exception("Gaps \".\" found in J-REGION allele %s"%\
-                            name)
-                refpos = m.start()
-
-            seq = seq.replace('.','')
-            yield Allele(species, name, functionality, refpos, acc_nr, seq)
+            yield IMGT_Sequence2Allele(rec)
 
 class AlleleContainerFormat(FileFormat):
     @staticmethod

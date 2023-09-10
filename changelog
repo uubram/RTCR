@@ -1,4 +1,11 @@
 # Change Log
+## [0.5.2] 2023-09-10
+### Fixed
+- setup.py, running 'python setup.py develop' no longer results in
+"ValueError: 'editdistance/bycython.pyx' doesn't match any files" by setting
+editdistance version to be 0.3.1 (version 0.6.2 gave the ValueError).
+- fileio.py, IMGTAlleleContainerFormat can read IMGT reference fasta.
+- convert.py, removed unreachable code
 ## [0.5.1] 2021-02-28
 ### Added
 - umi_group_ec.py and checkout.py show default values for their arguments,
